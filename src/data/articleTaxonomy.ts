@@ -1,6 +1,6 @@
 import { Article, ALL_ARTICLES, MODULES, Module } from "./curriculumData";
 
-export type CurriculumCategory = "ALL" | "GAOKAO72" | "BX_ALL" | "XB_ALL" | string;
+export type CurriculumCategory = "ALL" | "GAOKAO72" | "BX_ALL" | "XB_ALL" | "XX_ALL" | string;
 
 export type DynastyEra = "ALL" | "PRE_QIN" | "HAN_WEI" | "TANG_WUDAI" | "SONG" | "YUAN_MING_QING";
 
@@ -57,6 +57,7 @@ export function getCurricularTiers(): CurricularTier[] {
   const gaokaoCount = ALL_ARTICLES.filter(a => a.isGaoKao72).length;
   const bxCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_BX")).length;
   const xbCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_XB")).length;
+  const xxCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_XX")).length;
 
   return [
     {
@@ -66,14 +67,15 @@ export function getCurricularTiers(): CurricularTier[] {
       options: [
         { id: "GAOKAO72", name: "高考必背 72 篇", count: gaokaoCount, description: "高考命题超高频经典重点必背", isPopular: true },
         { id: "ALL", name: "全 11 册教材全部篇目", count: ALL_ARTICLES.length, description: "包含课文及诵读全量 100 篇" },
-        { id: "BX_ALL", name: "必修全套", count: bxCount, description: "高一必修上/下册全部课内必学篇目" },
-        { id: "XB_ALL", name: "选择性必修全套", count: xbCount, description: "高二/高三选必上/中/下册选修提高篇目" }
+        { id: "BX_ALL", name: "必修全套 (36篇)", count: bxCount, description: "高一必修上/下册全部课内必学篇目" },
+        { id: "XB_ALL", name: "选择性必修全套 (35篇)", count: xbCount, description: "高二/高三选必上/中/下册选修提高篇目" },
+        { id: "XX_ALL", name: "古代诗歌散文欣赏 (29篇)", count: xxCount, description: "统编高中选修中国古代诗歌散文欣赏全套" }
       ]
     },
     {
       id: "REQUIRED",
       title: "必修教材分册",
-      description: "新课标普通高中必修教材",
+      description: "新课标必修教材 (4分册·36篇)",
       options: MODULES.filter(m => m.category === "REQUIRED").map(m => ({
         id: m.id,
         name: m.name,
@@ -84,12 +86,23 @@ export function getCurricularTiers(): CurricularTier[] {
     {
       id: "SELECTIVE",
       title: "选择性必修分册",
-      description: "新课标选择性必修教材",
-      options: MODULES.filter(m => m.category === "SELECTIVE_REQUIRED").map(m => ({
+      description: "新课标选择性必修教材 (6分册·35篇)",
+      options: MODULES.filter(m => m.category === "SELECTIVE").map(m => ({
         id: m.id,
         name: m.name,
         count: m.totalArticles,
         description: m.isRecitationOnly ? "教材古诗词专项诵读篇目" : "课内经典文赋与先秦散文"
+      }))
+    },
+    {
+      id: "ELECTIVE",
+      title: "选修拓展分册",
+      description: "古代诗歌散文欣赏 (29篇)",
+      options: MODULES.filter(m => m.category === "ELECTIVE").map(m => ({
+        id: m.id,
+        name: m.name,
+        count: m.totalArticles,
+        description: "高三拓展经典诗词与文赋名篇欣赏"
       }))
     }
   ];
@@ -103,6 +116,7 @@ export function filterArticlesByScope(articles: Article[], scopeId: string): Art
   if (scopeId === "GAOKAO72") return articles.filter(a => a.isGaoKao72);
   if (scopeId === "BX_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_BX"));
   if (scopeId === "XB_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_XB"));
+  if (scopeId === "XX_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_XX"));
   return articles.filter(a => a.moduleId === scopeId);
 }
 

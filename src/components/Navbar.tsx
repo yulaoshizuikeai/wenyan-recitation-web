@@ -289,60 +289,66 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Right Options List */}
               <div className="flex-1 p-3 overflow-y-auto space-y-1.5">
-                {currentTierOptions.map(opt => {
-                  const isSelected = selectedScope === opt.id;
-                  return (
-                    <div
-                      key={opt.id}
-                      onClick={() => {
-                        onSelectScope(opt.id);
-                        setIsScopeModalOpen(false);
-                      }}
-                      className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                        isSelected
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
-                          : "bg-white dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold">{opt.name}</span>
-                          <span
-                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                              isSelected
-                                ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
-                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-                            }`}
-                          >
-                            {opt.count} 篇
-                          </span>
-                          {opt.isPopular && (
+                {currentTierOptions.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-zinc-400">
+                    未找到匹配的教材分册
+                  </div>
+                ) : (
+                  currentTierOptions.map(opt => {
+                    const isSelected = selectedScope === opt.id;
+                    return (
+                      <div
+                        key={opt.id}
+                        onClick={() => {
+                          onSelectScope(opt.id);
+                          setIsScopeModalOpen(false);
+                        }}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                          isSelected
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
+                            : "bg-white dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold">{opt.name}</span>
                             <span
-                              className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                                 isSelected
-                                  ? "bg-red-400/30 text-white dark:text-red-900"
-                                  : "bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400"
+                                  ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
                               }`}
                             >
-                              推荐
+                              {opt.count} 篇
                             </span>
-                          )}
+                            {opt.isPopular && (
+                              <span
+                                className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                                  isSelected
+                                    ? "bg-red-400/30 text-white dark:text-red-900"
+                                    : "bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400"
+                                }`}
+                              >
+                                推荐
+                              </span>
+                            )}
+                          </div>
+                          <p
+                            className={`text-[11px] mt-0.5 ${
+                              isSelected
+                                ? "text-zinc-300 dark:text-zinc-600"
+                                : "text-zinc-400 dark:text-zinc-500"
+                            }`}
+                          >
+                            {opt.description}
+                          </p>
                         </div>
-                        <p
-                          className={`text-[11px] mt-0.5 ${
-                            isSelected
-                              ? "text-zinc-300 dark:text-zinc-600"
-                              : "text-zinc-400 dark:text-zinc-500"
-                          }`}
-                        >
-                          {opt.description}
-                        </p>
-                      </div>
 
-                      {isSelected && <Check className="w-4 h-4 shrink-0 text-current" />}
-                    </div>
-                  );
-                })}
+                        {isSelected && <Check className="w-4 h-4 shrink-0 text-current" />}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
