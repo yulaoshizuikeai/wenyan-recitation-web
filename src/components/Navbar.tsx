@@ -1,16 +1,35 @@
-import React, { useState } from "react";
-import { Volume2, VolumeX, BookOpen, Layers, Sparkles, HelpCircle, Settings as SettingsIcon, Menu, X, Award, Eye } from "lucide-react";
-import { MODULES } from "../data/curriculumData";
+import React, { useState, useMemo } from "react";
+import {
+  Volume2,
+  VolumeX,
+  BookOpen,
+  Layers,
+  Sparkles,
+  HelpCircle,
+  Settings as SettingsIcon,
+  Menu,
+  X,
+  Eye,
+  BarChart2,
+  Sun,
+  Moon,
+  Check,
+  Search
+} from "lucide-react";
+import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
+import { AppTheme, toggleTheme } from "../utils/theme";
 
 export type NavView = "dashboard" | "snowball" | "flipcard" | "cloze" | "scenario" | "catalog" | "settings";
 
 interface NavbarProps {
   currentView: NavView;
   onSelectView: (view: NavView) => void;
-  selectedScope: string; // 'ALL' | 'GAOKAO72' | 'BX_ALL' | 'XB_ALL' | moduleId
+  selectedScope: string;
   onSelectScope: (scope: string) => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  theme: AppTheme;
+  onThemeChange: (theme: AppTheme) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,13 +38,39 @@ export const Navbar: React.FC<NavbarProps> = ({
   selectedScope,
   onSelectScope,
   soundEnabled,
-  onToggleSound
+  onToggleSound,
+  theme,
+  onThemeChange
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isScopeMenuOpen, setIsScopeMenuOpen] = useState(false);
+  const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
+  const [activeTierId, setActiveTierId] = useState<string>("CORE");
+  const [scopeSearchQuery, setScopeSearchQuery] = useState<string>("");
+
+  const curricularTiers = useMemo(() => getCurricularTiers(), []);
+
+  // Compute current scope label
+  const currentScopeLabel = useMemo(() => {
+    for (const tier of curricularTiers) {
+      const match = tier.options.find(opt => opt.id === selectedScope);
+      if (match) return match.name;
+    }
+    return "自选教材范围";
+  }, [curricularTiers, selectedScope]);
+
+  // Filter options in active tier by search
+  const currentTierOptions = useMemo(() => {
+    const tier = curricularTiers.find(t => t.id === activeTierId) || curricularTiers[0];
+    if (!scopeSearchQuery.trim()) return tier.options;
+    const q = scopeSearchQuery.toLowerCase();
+    // If searching, search across all tiers
+    return curricularTiers
+      .flatMap(t => t.options)
+      .filter(o => o.name.toLowerCase().includes(q) || o.description.toLowerCase().includes(q));
+  }, [curricularTiers, activeTierId, scopeSearchQuery]);
 
   const navItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "研墨看板", icon: <Award className="w-4 h-4" /> },
+    { id: "dashboard", label: "概览", icon: <BarChart2 className="w-4 h-4" /> },
     { id: "snowball", label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
     { id: "flipcard", label: "翻转闪卡", icon: <Sparkles className="w-4 h-4" /> },
     { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-4 h-4" /> },
@@ -34,165 +79,304 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: "settings", label: "设置", icon: <SettingsIcon className="w-4 h-4" /> }
   ];
 
-  const scopeOptions = [
-    { id: "ALL", label: "全部 11 册教材 (100篇)" },
-    { id: "GAOKAO72", label: "★ 高考 72 篇必背" },
-    { id: "BX_ALL", label: "必修全套 (36篇)" },
-    { id: "XB_ALL", label: "选择性必修全套 (35篇)" },
-    ...MODULES.map(m => ({ id: m.id, label: `${m.name} (${m.totalArticles}篇)` }))
+  // Mobile Bottom Bar has 5 core items
+  const mobileDockItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
+    { id: "dashboard", label: "概览", icon: <BarChart2 className="w-5 h-5" /> },
+    { id: "snowball", label: "滚雪球", icon: <Layers className="w-5 h-5" /> },
+    { id: "flipcard", label: "闪卡", icon: <Sparkles className="w-5 h-5" /> },
+    { id: "cloze", label: "遮挡", icon: <Eye className="w-5 h-5" /> },
+    { id: "catalog", label: "典库", icon: <BookOpen className="w-5 h-5" /> }
   ];
-
-  const currentScopeLabel = scopeOptions.find(o => o.id === selectedScope)?.label || "自选教材范围";
 
   const handleNavClick = (view: NavView) => {
     onSelectView(view);
     setIsMobileMenuOpen(false);
   };
 
+  const handleThemeToggle = () => {
+    const next = toggleTheme(theme);
+    onThemeChange(next);
+  };
+
   return (
-    <header className="sticky top-0 z-50 bg-[#F7F4EB]/95 backdrop-blur border-b border-[#E3DEC3] transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Brand Logo & Seal */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavClick("dashboard")}>
-            <div className="w-9 h-9 rounded-lg bg-[#9E2A2B] text-[#F7F4EB] flex items-center justify-center font-serif font-black text-xl shadow-sm border border-[#7A1E1F]">
-              诵
-            </div>
-            <div>
-              <div className="font-serif font-bold text-lg text-[#232120] tracking-wide flex items-center gap-2">
-                文言背诵
-                <span className="text-[10px] font-sans px-1.5 py-0.5 rounded bg-[#9E2A2B]/10 text-[#9E2A2B] font-semibold border border-[#9E2A2B]/20">
+    <>
+      {/* Top Navbar */}
+      <header className="sticky top-0 z-40 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14">
+            {/* Brand Logo */}
+            <div
+              className="flex items-center gap-2.5 cursor-pointer select-none"
+              onClick={() => handleNavClick("dashboard")}
+            >
+              <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm">
+                诵
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100 tracking-tight">
+                  文言背诵
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
                   FSRS-5
                 </span>
               </div>
-              <div className="text-[10px] text-[#5C5855] hidden sm:block -mt-0.5">
-                高中课标古诗文 · 滚雪球串联记忆
-              </div>
             </div>
-          </div>
 
-          {/* Desktop Navigation Tabs */}
-          <nav className="hidden lg:flex items-center gap-1">
-            {navItems.map(item => {
-              const active = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                    active
-                      ? "bg-[#9E2A2B] text-white shadow-sm font-bold"
-                      : "text-[#5C5855] hover:text-[#232120] hover:bg-[#EAE5D4]/70"
-                  }`}
-                >
-                  {item.icon}
-                  {item.label}
-                  {item.id === "snowball" && (
-                    <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400 text-amber-950 font-bold ml-0.5">
-                      推荐
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+            {/* Desktop Navigation Tabs */}
+            <nav className="hidden lg:flex items-center gap-1">
+              {navItems.map(item => {
+                const active = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      active
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
+                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
 
-          {/* Scope Selector & Controls */}
-          <div className="flex items-center gap-2">
-            {/* Book Scope Selector dropdown */}
-            <div className="relative">
+            {/* Right Controls: Scope, Theme, Sound, Menu */}
+            <div className="flex items-center gap-2">
+              {/* Hierarchical Scope Selector Trigger */}
               <button
-                onClick={() => {
-                  setIsScopeMenuOpen(!isScopeMenuOpen);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D5CFBD] bg-white/70 hover:bg-white text-xs font-semibold text-[#232120] shadow-2xs transition-all max-w-[140px] sm:max-w-[200px] truncate"
+                onClick={() => setIsScopeModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 transition-colors max-w-[150px] sm:max-w-[210px] truncate"
+                title="选择背诵教材范围"
               >
-                <BookOpen className="w-3.5 h-3.5 text-[#9E2A2B] shrink-0" />
+                <BookOpen className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                 <span className="truncate">{currentScopeLabel}</span>
               </button>
 
-              {isScopeMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setIsScopeMenuOpen(false)} />
-                  <div className="absolute right-0 mt-1 w-64 max-h-80 overflow-y-auto bg-white rounded-xl shadow-xl border border-[#E3DEC3] z-40 py-1.5 text-xs">
-                    <div className="px-3 py-1 font-bold text-[#8C8884] border-b border-[#F0EDE1]">
-                      自选背诵教材范围
-                    </div>
-                    {scopeOptions.map(opt => (
-                      <button
-                        key={opt.id}
-                        onClick={() => {
-                          onSelectScope(opt.id);
-                          setIsScopeMenuOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-[#F7F4EB] transition-colors ${
-                          selectedScope === opt.id ? "font-bold text-[#9E2A2B] bg-[#9E2A2B]/5" : "text-[#232120]"
-                        }`}
-                      >
-                        <span>{opt.label}</span>
-                        {selectedScope === opt.id && <span className="text-[#9E2A2B]">✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              {/* Theme Toggle Button */}
+              <button
+                onClick={handleThemeToggle}
+                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                title={theme === "dark" ? "切换至浅色模式" : "切换至深色模式"}
+              >
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+
+              {/* Audio Toggle Button */}
+              <button
+                onClick={onToggleSound}
+                title={soundEnabled ? "编钟音效已开启（点击静音）" : "音效已静音（点击开启）"}
+                className={`p-1.5 rounded-lg border transition-colors ${
+                  soundEnabled
+                    ? "border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800"
+                    : "border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                }`}
+              >
+                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+
+              {/* Mobile Secondary Menu Toggle */}
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="菜单"
+              >
+                {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              </button>
             </div>
-
-            {/* Audio Toggle */}
-            <button
-              onClick={onToggleSound}
-              title={soundEnabled ? "音效已开启（点击静音）" : "音效已静音（点击开启）"}
-              className={`p-2 rounded-lg border transition-all ${
-                soundEnabled
-                  ? "border-[#D5CFBD] bg-white/70 text-[#2C4F3D] hover:bg-white"
-                  : "border-red-200 bg-red-50 text-red-500 hover:bg-red-100"
-              }`}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => {
-                setIsMobileMenuOpen(!isMobileMenuOpen);
-              }}
-              className="lg:hidden p-2 rounded-lg border border-[#D5CFBD] bg-white/70 text-[#232120]"
-            >
-              {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* Mobile Drawer Menu */}
-      {isMobileMenuOpen && (
-        <div className="lg:hidden border-t border-[#E3DEC3] bg-[#F7F4EB] px-4 pt-2 pb-4 space-y-1">
-          {navItems.map(item => {
+        {/* Mobile Top Dropdown Drawer for Secondary Items */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 space-y-1 animate-in fade-in duration-150">
+            <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 px-2 pb-1">
+              专项模式与配置
+            </div>
+            <button
+              onClick={() => handleNavClick("scenario")}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                currentView === "scenario"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
+                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-4 h-4" />
+                <span>高考情境默写真题</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-semibold">
+                真题库
+              </span>
+            </button>
+
+            <button
+              onClick={() => handleNavClick("settings")}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                currentView === "settings"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
+                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <SettingsIcon className="w-4 h-4" />
+              <span>系统与 FSRS 算法设置</span>
+            </button>
+          </div>
+        )}
+      </header>
+
+      {/* Two-Tier Hierarchical Curriculum Scope Modal */}
+      {isScopeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-base text-zinc-900 dark:text-zinc-100">
+                  选择背诵教材范围
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  设定当前滚雪球、翻转闪卡与遮挡背诵的目标教材分册
+                </p>
+              </div>
+              <button
+                onClick={() => setIsScopeModalOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Search */}
+            <div className="px-5 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800/50">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="搜索教材名称（如：高考72篇、必修上、选必下）..."
+                  value={scopeSearchQuery}
+                  onChange={e => setScopeSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:border-zinc-400 dark:focus:border-zinc-600"
+                />
+              </div>
+            </div>
+
+            {/* Two-Tier Content */}
+            <div className="flex-1 flex overflow-hidden min-h-[320px]">
+              {/* Left Category Tabs (Hidden if searching) */}
+              {!scopeSearchQuery.trim() && (
+                <div className="w-36 sm:w-44 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 p-2 space-y-1 overflow-y-auto">
+                  {curricularTiers.map(tier => (
+                    <button
+                      key={tier.id}
+                      onClick={() => setActiveTierId(tier.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition-colors ${
+                        activeTierId === tier.id
+                          ? "bg-white dark:bg-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100 shadow-2xs border border-zinc-200/80 dark:border-zinc-700/80"
+                          : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                      }`}
+                    >
+                      <div>{tier.title}</div>
+                      <div className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                        {tier.description}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Right Options List */}
+              <div className="flex-1 p-3 overflow-y-auto space-y-1.5">
+                {currentTierOptions.map(opt => {
+                  const isSelected = selectedScope === opt.id;
+                  return (
+                    <div
+                      key={opt.id}
+                      onClick={() => {
+                        onSelectScope(opt.id);
+                        setIsScopeModalOpen(false);
+                      }}
+                      className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                        isSelected
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
+                          : "bg-white dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold">{opt.name}</span>
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                              isSelected
+                                ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                            }`}
+                          >
+                            {opt.count} 篇
+                          </span>
+                          {opt.isPopular && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                                isSelected
+                                  ? "bg-red-400/30 text-white dark:text-red-900"
+                                  : "bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400"
+                              }`}
+                            >
+                              推荐
+                            </span>
+                          )}
+                        </div>
+                        <p
+                          className={`text-[11px] mt-0.5 ${
+                            isSelected
+                              ? "text-zinc-300 dark:text-zinc-600"
+                              : "text-zinc-400 dark:text-zinc-500"
+                          }`}
+                        >
+                          {opt.description}
+                        </p>
+                      </div>
+
+                      {isSelected && <Check className="w-4 h-4 shrink-0 text-current" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Fixed Bottom Dock (Human-ergonomic Thumb Zone, >= 48px hit area) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 pb-[env(safe-area-inset-bottom)] transition-colors">
+        <div className="grid grid-cols-5 h-14">
+          {mobileDockItems.map(item => {
             const active = currentView === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                className={`flex flex-col items-center justify-center min-h-[48px] py-1 transition-colors select-none ${
                   active
-                    ? "bg-[#9E2A2B] text-white font-bold"
-                    : "text-[#5C5855] hover:text-[#232120] hover:bg-[#EAE5D4]"
+                    ? "text-zinc-900 dark:text-zinc-100 font-semibold"
+                    : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
                 }`}
               >
-                <div className="flex items-center gap-2">
+                <div
+                  className={`p-1 rounded-md transition-colors ${
+                    active ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" : ""
+                  }`}
+                >
                   {item.icon}
-                  {item.label}
                 </div>
-                {item.id === "snowball" && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-amber-950 font-bold">
-                    核心推荐
-                  </span>
-                )}
+                <span className="text-[10px] mt-0.5 leading-none">{item.label}</span>
               </button>
             );
           })}
         </div>
-      )}
-    </header>
+      </nav>
+    </>
   );
 };

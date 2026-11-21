@@ -6,7 +6,26 @@ import { fireConfetti } from "../components/Confetti";
 import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
 import { Rating } from "../domain/fsrs/fsrsTypes";
 import { getCardState, saveCardStatesBatch, recordReviewLog, getBottlenecks, saveBottlenecks } from "../storage/db";
-import { Link2, Eye, EyeOff, AlertTriangle, CheckCircle2, ChevronRight, ChevronLeft, RotateCcw, Trophy, Search } from "lucide-react";
+import {
+  filterArticlesByScope,
+  DYNASTY_GROUPS,
+  DynastyEra
+} from "../data/articleTaxonomy";
+import {
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  ChevronLeft,
+  RotateCcw,
+  Trophy,
+  Search,
+  X,
+  Layers,
+  Sparkles,
+  Command
+} from "lucide-react";
 
 interface SnowballViewProps {
   initialArticleId?: string;
@@ -14,27 +33,17 @@ interface SnowballViewProps {
 }
 
 export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, selectedScope }) => {
-  // Filtered articles list based on scope
   const filteredArticles = useMemo(() => {
-    let list = ALL_ARTICLES;
-    if (selectedScope === "GAOKAO72") {
-      list = list.filter(a => a.isGaoKao72);
-    } else if (selectedScope === "BX_ALL") {
-      list = list.filter(a => a.moduleId.startsWith("MODULE_BX"));
-    } else if (selectedScope === "XB_ALL") {
-      list = list.filter(a => a.moduleId.startsWith("MODULE_XB"));
-    } else if (selectedScope !== "ALL") {
-      list = list.filter(a => a.moduleId === selectedScope);
-    }
-    return list;
+    return filterArticlesByScope(ALL_ARTICLES, selectedScope);
   }, [selectedScope]);
 
   const [selectedArticleId, setSelectedArticleId] = useState<string>(() => {
     if (initialArticleId) return initialArticleId;
-    return "art_bx1_12"; // 劝学
+    return filteredArticles[0]?.id || "art_bx1_12"; // 劝学
   });
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDynastyFilter, setSelectedDynastyFilter] = useState<DynastyEra>("ALL");
   const [showArticlePicker, setShowArticlePicker] = useState(false);
 
   const currentArticle: Article = useMemo(() => {
@@ -78,13 +87,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
     setRevealedUnitIndices(new Set());
   }, [currentArticle.id, stages.length]);
 
-  // Scroll to top on stage change
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [currentStageIndex]);
-
   const currentStage = stages[currentStageIndex];
   const isCompleted = currentStageIndex >= stages.length - 1;
 
@@ -107,7 +109,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
 
   const handleNextStage = async () => {
     if (isCompleted) {
-      // Execute FSRS batch credit settlement
       sound.playCelebration();
       fireConfetti();
       localStorage.removeItem(`snowball_stage_${currentArticle.id}`);
@@ -146,6 +147,8 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       const nextIdx = currentStageIndex + 1;
       setCurrentStageIndex(nextIdx);
       localStorage.setItem(`snowball_stage_${currentArticle.id}`, String(nextIdx));
+      // Auto smooth scroll to top of card if needed
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -168,69 +171,99 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
     setRevealedUnitIndices(next);
   };
 
+  // Keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if picker or modal is open
+      if (showArticlePicker || showSettlementModal) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.code === "Space" || e.code === "Enter") {
+        e.preventDefault();
+        handleNextStage();
+      } else if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        handlePrevStage();
+      } else if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        toggleBottleneck(currentStageIndex);
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        setMaskHistory(prev => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentStageIndex, isCompleted, showArticlePicker, showSettlementModal, stages, bottleneckIndices]);
+
+  // Filtered articles for switcher modal
   const searchedArticles = useMemo(() => {
-    if (!searchQuery.trim()) return filteredArticles;
-    const q = searchQuery.toLowerCase();
-    return filteredArticles.filter(
-      a => a.title.toLowerCase().includes(q) || a.author.toLowerCase().includes(q)
-    );
-  }, [filteredArticles, searchQuery]);
+    let list = filteredArticles;
+
+    if (selectedDynastyFilter !== "ALL") {
+      const group = DYNASTY_GROUPS.find(g => g.id === selectedDynastyFilter);
+      if (group && group.subDynasties.length > 0) {
+        list = list.filter(a => group.subDynasties.includes(a.dynasty));
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        a => a.title.toLowerCase().includes(q) || a.author.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [filteredArticles, selectedDynastyFilter, searchQuery]);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6" ref={scrollRef}>
+    <div className="max-w-3xl mx-auto px-4 py-5 pb-32" ref={scrollRef}>
       {/* Article Header & Selector */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-2xl p-5 mb-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-[#9E2A2B]/10 text-[#9E2A2B] text-xs font-bold border border-[#9E2A2B]/20">
-                长卷滚雪球串联背诵
-              </span>
-              <span className="text-xs text-[#8C8884]">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
                 {currentArticle.dynasty} · {currentArticle.author} · {currentArticle.genre}
               </span>
-            </div>
-            <h1 className="text-2xl font-bold font-serif text-[#232120] mt-1 flex flex-wrap items-center gap-2">
-              《{currentArticle.title}》
               {currentArticle.isGaoKao72 && (
-                <span className="text-xs font-sans font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                  高考 72 篇
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium border border-zinc-200 dark:border-zinc-700">
+                  高考72篇
                 </span>
               )}
-              {currentArticle.recitationScope && currentArticle.recitationScope !== "FULL_TEXT" && (
-                <span className="text-xs font-sans font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-[#2B5C8F] border border-blue-300">
-                  必背范围：{currentArticle.recitationScope}
-                </span>
-              )}
+            </div>
+            <h1 className="text-xl sm:text-2xl font-classical font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+              《{currentArticle.title}》
             </h1>
           </div>
 
           <button
-            onClick={() => {
-              setShowArticlePicker(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] hover:bg-[#F0EDE1] text-xs font-bold text-[#232120] transition-colors"
+            onClick={() => setShowArticlePicker(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
           >
-            <Search className="w-3.5 h-3.5 text-[#9E2A2B]" />
-            换一篇背诵 ({filteredArticles.length} 篇可选)
+            <Search className="w-3.5 h-3.5 text-zinc-500" />
+            <span>换一篇 ({filteredArticles.length})</span>
           </button>
         </div>
 
-        {/* Progress Bar & Stage Indicator */}
+        {/* Segmented Progress Bar */}
         {currentStage && (
-          <div className="mt-5 pt-4 border-t border-[#F0EDE1]">
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="font-semibold text-[#5C5855] flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5 text-[#2B5C8F]" />
-                串联第 {currentStageIndex + 1} 联 / 共 {stages.length} 联
+          <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/60">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-zinc-500 dark:text-zinc-400">
+                滚雪球第 <strong>{currentStageIndex + 1}</strong> / {stages.length} 联
               </span>
-              <span className="font-bold text-[#2B5C8F] text-sm">
+              <span className="font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-100">
                 {Math.round(((currentStageIndex + 1) / stages.length) * 100)}%
               </span>
             </div>
-            <div className="w-full h-2.5 bg-[#EAE5D4] rounded-full overflow-hidden">
+
+            {/* Clean Segmented Track */}
+            <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-[#2B5C8F] to-[#2C4F3D] transition-all duration-300"
+                className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all duration-200"
                 style={{ width: `${((currentStageIndex + 1) / stages.length) * 100}%` }}
               />
             </div>
@@ -238,286 +271,286 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         )}
       </div>
 
-      {/* Main Chaining Workspace */}
+      {/* Main Workspace */}
       {currentStage ? (
-        <div className="space-y-5">
-          {/* Restored Progress Banner */}
+        <div className="space-y-4">
+          {/* Progress Restore Toast */}
           {hasRestoredProgress && (
-            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between gap-3 text-xs text-amber-950 animate-in fade-in duration-200">
+            <div className="bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
               <div className="flex items-center gap-2">
-                <span>📌</span>
-                <span>已自动恢复上次背诵进度至<strong>第 {currentStageIndex + 1} 联</strong>（共 {stages.length} 联）</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
+                <span>已恢复背诵进度至<strong>第 {currentStageIndex + 1} 联</strong></span>
               </div>
               <button
                 onClick={handleResetToFirstStage}
-                className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-[11px] font-bold text-amber-900 transition-colors"
+                className="text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 underline underline-offset-2"
               >
-                从第 1 联重新开始
+                从头开始
               </button>
             </div>
           )}
 
-          {/* Rule Explanatory Banner */}
-          <div className="bg-[#FAF7F0] border border-[#E3DEC3] rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-[#5C5855]">
-            <div className="flex items-center gap-2">
-              <span className="text-base">❄️</span>
-              <span>
-                <strong>滚雪球串联法则：</strong>先温习前文盲诵，再连贯攻坚最新句联！全部背通后将一键智能结算至 FSRS 记忆库。
-              </span>
-            </div>
-            <button
-              onClick={() => {
-                setMaskHistory(!maskHistory);
-              }}
-              className={`shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
-                maskHistory
-                  ? "bg-[#9E2A2B]/10 border-[#9E2A2B]/30 text-[#9E2A2B]"
-                  : "bg-white border-[#D5CFBD] text-[#232120]"
-              }`}
-            >
-              {maskHistory ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              {maskHistory ? "前文盲背中" : "前文全览"}
-            </button>
-          </div>
-
-          {/* Current Spotlight Card */}
+          {/* Current Spotlight Unit Card */}
           <div
-            className={`border-2 rounded-2xl p-5 shadow-sm transition-all ${
+            className={`border rounded-2xl p-5 shadow-xs transition-colors ${
               bottleneckIndices.has(currentStageIndex)
-                ? "bg-red-50/70 border-[#9E2A2B]"
-                : "bg-blue-50/60 border-[#2B5C8F]"
+                ? "bg-red-50/40 dark:bg-red-950/20 border-red-300 dark:border-red-900/60"
+                : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800"
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span
-                className={`text-xs font-bold flex items-center gap-1.5 ${
-                  bottleneckIndices.has(currentStageIndex) ? "text-[#9E2A2B]" : "text-[#2B5C8F]"
-                }`}
-              >
-                ★ 本阶段攻坚目标（第 {currentStageIndex + 1} 联）
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  当前攻坚（第 {currentStageIndex + 1} 联）
+                </span>
+                {bottleneckIndices.has(currentStageIndex) && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 font-medium">
+                    转折卡壳标记
+                  </span>
+                )}
+              </div>
+
               <button
                 onClick={() => toggleBottleneck(currentStageIndex)}
-                className={`flex items-center gap-1 px-3 py-1 rounded-lg border text-xs font-bold transition-all ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
                   bottleneckIndices.has(currentStageIndex)
-                    ? "bg-[#9E2A2B] text-white border-[#7A1E1F]"
-                    : "bg-white border-[#D5CFBD] text-[#5C5855] hover:border-[#9E2A2B]"
+                    ? "bg-red-600 text-white border-red-700 dark:bg-red-500"
+                    : "border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
                 }`}
+                title="快捷键: B"
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {bottleneckIndices.has(currentStageIndex) ? "已记为转折卡壳" : "此处起承转合卡壳？"}
+                <span>{bottleneckIndices.has(currentStageIndex) ? "已记为卡壳" : "标记卡壳 (B)"}</span>
               </button>
             </div>
-            <p className="text-xl md:text-2xl font-serif font-bold text-[#232120] leading-relaxed tracking-wide">
+
+            <p className="text-xl sm:text-2xl font-classical font-semibold text-zinc-900 dark:text-zinc-100 leading-relaxed tracking-wide">
               {currentStage.newlyAddedUnit.text}
             </p>
           </div>
 
           {/* Chained Accumulation List */}
-          <div className="bg-white/80 backdrop-blur border border-[#E3DEC3] rounded-2xl p-5 shadow-sm">
-            <h3 className="text-sm font-bold text-[#232120] mb-3 flex items-center justify-between">
-              <span>滚雪球累加文本（共 {currentStage.chainUnits.length} 联连诵）</span>
-              <span className="text-xs font-normal text-[#8C8884]">
-                {maskHistory ? "点击盲文块可单句显露对照" : "全文显现中"}
-              </span>
-            </h3>
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-100 dark:border-zinc-800/60">
+              <h3 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                滚雪球串联累积（共 {currentStage.chainUnits.length} 联）
+              </h3>
+              <button
+                onClick={() => setMaskHistory(!maskHistory)}
+                className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                title="快捷键: M"
+              >
+                {maskHistory ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span>{maskHistory ? "前文盲诵中" : "前文全览"} (M)</span>
+              </button>
+            </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {currentStage.chainUnits.map((unit, idx) => {
                 const isNewest = idx === currentStage.chainUnits.length - 1;
                 const isUnitBottleneck = bottleneckIndices.has(idx);
                 const isMasked = maskHistory && !isNewest && !revealedUnitIndices.has(idx);
 
-                // Convert text to masked blocks
-                const displayText = isMasked
-                  ? unit.text.replace(/[\u4e00-\u9fa5]/g, "■")
-                  : unit.text;
-
                 return (
                   <div
                     key={idx}
                     onClick={() => {
-                      if (isMasked || revealedUnitIndices.has(idx)) {
-                        toggleRevealUnit(idx);
-                      }
+                      if (!isNewest) toggleRevealUnit(idx);
                     }}
-                    className={`p-3.5 rounded-xl border transition-all ${
+                    className={`p-3 rounded-xl border transition-all ${
                       isNewest
-                        ? "bg-blue-50/40 border-[#2B5C8F]/50 ring-1 ring-[#2B5C8F]/20"
+                        ? "bg-zinc-50 dark:bg-zinc-800/40 border-zinc-300 dark:border-zinc-700"
                         : isUnitBottleneck
-                        ? "bg-red-50/30 border-[#9E2A2B]/40"
-                        : "bg-[#FAF7F0] border-[#E3DEC3]"
-                    } ${isMasked ? "cursor-pointer hover:border-[#9E2A2B]/60" : ""}`}
+                        ? "bg-red-50/20 dark:bg-red-950/10 border-red-200 dark:border-red-900/40"
+                        : "bg-white dark:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800"
+                    } ${!isNewest ? "cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600" : ""}`}
                   >
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span
-                        className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                          isNewest
-                            ? "bg-[#2B5C8F] text-white"
-                            : isUnitBottleneck
-                            ? "bg-[#9E2A2B] text-white"
-                            : "bg-[#EAE5D4] text-[#5C5855]"
-                        }`}
-                      >
-                        {isNewest ? "★ 本次新加" : `第 ${idx + 1} 联`}
-                        {isUnitBottleneck && " · 易卡壳"}
+                    <div className="flex items-center justify-between text-[11px] mb-1">
+                      <span className="font-mono text-zinc-400 dark:text-zinc-500">
+                        {isNewest ? "★ 本次新联" : `第 ${idx + 1} 联`}
+                        {isUnitBottleneck && " · 卡壳点"}
                       </span>
                       {isMasked && (
-                        <span className="text-[11px] text-[#9E2A2B] font-semibold">
-                          （盲背中 · 点击刮开对照）
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                          轻触显露对照
                         </span>
                       )}
                     </div>
+
                     <p
-                      className={`text-lg font-serif leading-relaxed ${
+                      className={`text-base sm:text-lg font-classical leading-relaxed ${
                         isMasked
-                          ? "text-[#8C8884] tracking-widest select-none"
+                          ? "frosted-mask text-zinc-800 dark:text-zinc-200"
                           : isNewest
-                          ? "font-bold text-[#232120]"
-                          : "text-[#3D3A39]"
+                          ? "font-semibold text-zinc-900 dark:text-zinc-100"
+                          : "text-zinc-700 dark:text-zinc-300"
                       }`}
                     >
-                      {displayText}
+                      {unit.text}
                     </p>
                   </div>
                 );
               })}
             </div>
           </div>
-
-          {/* Bottom Action Controls */}
-          <div className="flex items-center gap-3 pt-2">
-            {currentStageIndex > 0 && (
-              <button
-                onClick={handlePrevStage}
-                className="flex-1 py-3 px-4 rounded-xl border border-[#D5CFBD] bg-white hover:bg-[#FAF7F0] text-sm font-bold text-[#232120] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                返回上一步
-              </button>
-            )}
-
-            <button
-              onClick={handleNextStage}
-              className={`flex-[1.5] py-3.5 px-6 rounded-xl text-white text-base font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.99] ${
-                isCompleted
-                  ? "bg-gradient-to-r from-[#2C4F3D] to-[#1E432F] hover:from-[#1E432F] hover:to-[#132E1F]"
-                  : "bg-gradient-to-r from-[#2B5C8F] to-[#1E3F63] hover:from-[#1E3F63] hover:to-[#122A42]"
-              }`}
-            >
-              {isCompleted ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5 text-amber-300" />
-                  通篇贯通 · 智能同步 FSRS
-                </>
-              ) : (
-                <>
-                  <span>背熟了 · 滚雪球下一段</span>
-                  <ChevronRight className="w-5 h-5" />
-                </>
-              )}
-            </button>
-          </div>
         </div>
       ) : (
-        <div className="text-center py-16 bg-white border border-[#E3DEC3] rounded-2xl">
-          <p className="text-[#8C8884]">暂无长文篇章数据</p>
+        <div className="text-center py-16 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl">
+          <p className="text-xs text-zinc-400">暂无篇章数据</p>
         </div>
       )}
 
-      {/* Completion & FSRS Settlement Modal */}
+      {/* Floating Bottom Action Dock (Sticky Ergonomic Control) */}
+      <div className="fixed bottom-14 lg:bottom-4 left-0 right-0 z-30 pointer-events-none px-4">
+        <div className="max-w-xl mx-auto pointer-events-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-2.5 shadow-lg flex items-center gap-2">
+          {currentStageIndex > 0 && (
+            <button
+              onClick={handlePrevStage}
+              className="px-3.5 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-colors"
+              title="快捷键: ←"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">上一步</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleNextStage}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
+              isCompleted
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs"
+                : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white shadow-xs"
+            }`}
+          >
+            {isCompleted ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>通篇结业 · 沉淀 FSRS (Space)</span>
+              </>
+            ) : (
+              <>
+                <span>背熟了 · 滚雪球下一段 (Space)</span>
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Settlement Modal */}
       {showSettlementModal && settlementStats && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-[#F7F4EB] border-2 border-[#D4AF37] rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center mx-auto mb-4 shadow-sm">
-              <Trophy className="w-8 h-8" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 max-w-md w-full shadow-xl relative animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 flex items-center justify-center mx-auto mb-3">
+              <Trophy className="w-6 h-6" />
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold font-serif text-center text-[#232120]">
-              《{currentArticle.title}》通篇串联结业！
+            <h2 className="text-lg font-semibold text-center text-zinc-900 dark:text-zinc-100">
+              《{currentArticle.title}》全篇贯通结业
             </h2>
-            <p className="text-xs text-center text-[#5C5855] mt-1 mb-6">
-              恭喜你完成了全篇滚雪球串联背诵！系统已自动对全篇卡片完成 FSRS 间隔重复计算与信用分配。
+            <p className="text-xs text-center text-zinc-500 dark:text-zinc-400 mt-1 mb-5">
+              已将全篇各句联记忆指标自动结算至本地 FSRS-5 算法记忆库。
             </p>
 
-            <div className="bg-white rounded-2xl p-4 border border-[#E3DEC3] space-y-3 mb-6 text-xs sm:text-sm">
+            <div className="bg-zinc-50 dark:bg-zinc-800/60 rounded-xl p-4 border border-zinc-100 dark:border-zinc-800 space-y-2.5 mb-5 text-xs">
               <div className="flex justify-between items-center">
-                <span className="text-[#5C5855]">串联总联数</span>
-                <span className="font-bold text-[#232120]">{settlementStats.totalUnits} 联全篇贯通</span>
+                <span className="text-zinc-500 dark:text-zinc-400">通背总联数</span>
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                  {settlementStats.totalUnits} 联全篇贯通
+                </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[#5C5855]">顺畅连诵率</span>
-                <span className="font-bold text-[#2C4F3D] text-base">
+                <span className="text-zinc-500 dark:text-zinc-400">顺畅连诵率</span>
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100">
                   {Math.round((settlementStats.smoothCount / settlementStats.totalUnits) * 100)}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[#5C5855]">顺畅 vs 突破</span>
-                <span className="font-medium text-[#232120]">
-                  {settlementStats.smoothCount} 联顺畅 · {settlementStats.bottleneckCount} 联卡壳
+                <span className="text-zinc-500 dark:text-zinc-400">顺畅 / 卡壳标注</span>
+                <span className="text-zinc-700 dark:text-zinc-300">
+                  {settlementStats.smoothCount} 联顺畅 ｜ {settlementStats.bottleneckCount} 联易卡壳
                 </span>
               </div>
-              <div className="flex justify-between items-center pt-2 border-t border-[#F0EDE1]">
-                <span className="text-[#5C5855]">预计下次串联复习</span>
-                <span className="font-bold text-[#2B5C8F] text-base">
+              <div className="flex justify-between items-center pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                <span className="text-zinc-500 dark:text-zinc-400">建议下次串联复习</span>
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100">
                   约 {settlementStats.avgNextInterval.toFixed(1)} 天后
                 </span>
               </div>
             </div>
 
-            <div className="space-y-1.5 text-xs text-[#8C8884] mb-6">
-              <div>✓ 记忆库稳定性（Stability）已自动跃升</div>
-              <div>✓ 今日学习进度与研墨打卡足迹已实时记录</div>
-              <div>✓ 锁定了文言转折起承转合弱项标记</div>
-            </div>
-
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 onClick={() => {
                   setCurrentStageIndex(0);
                   setShowSettlementModal(false);
                 }}
-                className="flex-1 py-3 rounded-xl border border-[#D5CFBD] bg-white hover:bg-[#FAF7F0] text-xs sm:text-sm font-bold text-[#232120] flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center gap-1"
               >
-                <RotateCcw className="w-4 h-4" />
-                再巩固一遍
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>再来一遍</span>
               </button>
               <button
-                onClick={() => {
-                  setShowSettlementModal(false);
-                }}
-                className="flex-[1.5] py-3 rounded-xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white text-xs sm:text-sm font-bold shadow-md"
+                onClick={() => setShowSettlementModal(false)}
+                className="flex-[1.5] py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-white"
               >
-                完成结业
+                完成
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Article Switcher Drawer / Modal */}
+      {/* Categorized Article Switcher Modal */}
       {showArticlePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-[#F7F4EB] border border-[#E3DEC3] rounded-3xl p-6 max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-serif font-bold text-lg text-[#232120]">选择背诵篇目</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">选择滚雪球篇目</h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">按朝代或关键字快速定位</p>
+              </div>
               <button
                 onClick={() => setShowArticlePicker(false)}
-                className="text-[#8C8884] hover:text-[#232120] text-lg font-bold p-1"
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <input
-              type="text"
-              placeholder="搜索篇目名或作者（如：劝学、赤壁赋、苏轼）"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5CFBD] bg-white text-sm text-[#232120] mb-4 focus:outline-hidden focus:border-[#9E2A2B]"
-            />
+            {/* Search Input */}
+            <div className="px-5 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800/50">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="搜索篇目名或作者（如：劝学、赤壁赋、苏轼）..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:border-zinc-400 dark:focus:border-zinc-600"
+                />
+              </div>
+            </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            {/* Dynasty Filter Chips */}
+            <div className="px-5 py-2 flex items-center gap-1 overflow-x-auto border-b border-zinc-100 dark:border-zinc-800/50 text-[11px]">
+              {DYNASTY_GROUPS.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => setSelectedDynastyFilter(d.id)}
+                  className={`px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${
+                    selectedDynastyFilter === d.id
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold"
+                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
               {searchedArticles.map(article => (
                 <button
                   key={article.id}
@@ -526,20 +559,32 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
                     setShowArticlePicker(false);
                     setSearchQuery("");
                   }}
-                  className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${
+                  className={`w-full text-left p-2.5 rounded-xl border transition-colors flex items-center justify-between ${
                     selectedArticleId === article.id
-                      ? "bg-[#9E2A2B]/10 border-[#9E2A2B] text-[#9E2A2B] font-bold"
-                      : "bg-white border-[#E3DEC3] hover:border-[#9E2A2B]/40 text-[#232120]"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
+                      : "bg-white dark:bg-zinc-900/60 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   }`}
                 >
                   <div>
-                    <div className="text-sm font-serif font-bold">《{article.title}》</div>
-                    <div className="text-xs text-[#8C8884] mt-0.5">
+                    <div className="text-xs font-semibold font-classical">《{article.title}》</div>
+                    <div
+                      className={`text-[10px] mt-0.5 ${
+                        selectedArticleId === article.id
+                          ? "text-zinc-300 dark:text-zinc-600"
+                          : "text-zinc-400 dark:text-zinc-500"
+                      }`}
+                    >
                       {article.dynasty} · {article.author} · {article.genre}
                     </div>
                   </div>
                   {article.isGaoKao72 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                        selectedArticleId === article.id
+                          ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                          : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                      }`}
+                    >
                       高考72篇
                     </span>
                   )}

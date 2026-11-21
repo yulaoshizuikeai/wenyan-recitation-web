@@ -1,9 +1,25 @@
 import React, { useState } from "react";
 import { sound } from "../sound/audioSynthesizer";
-import { resetAllProgress, getAllCardStates, getDailyRecords, getSetting, setSetting } from "../storage/db";
-import { Settings as SettingsIcon, Sliders, Download, Upload, Trash2, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react";
+import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting } from "../storage/db";
+import { AppTheme, toggleTheme } from "../utils/theme";
+import {
+  Settings as SettingsIcon,
+  Sliders,
+  Download,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  Sun,
+  Moon,
+  Volume2
+} from "lucide-react";
 
-export const SettingsView: React.FC = () => {
+interface SettingsViewProps {
+  theme?: AppTheme;
+  onThemeChange?: (theme: AppTheme) => void;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onThemeChange }) => {
   const [retention, setRetention] = useState<number>(0.93);
   const [factor, setFactor] = useState<number>(0.72);
   const [dailyNewLimit, setDailyNewLimit] = useState<number>(20);
@@ -25,7 +41,7 @@ export const SettingsView: React.FC = () => {
     const cards = await getAllCardStates();
     const records = await getDailyRecords();
     const exportObj = {
-      version: "1.0.0",
+      version: "2.0.0",
       exportTime: new Date().toISOString(),
       cards,
       records
@@ -35,7 +51,7 @@ export const SettingsView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `wenyan_recitation_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `wenyan_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -47,31 +63,88 @@ export const SettingsView: React.FC = () => {
     window.location.reload();
   };
 
+  const handleTestSound = () => {
+    sound.enabled = true;
+    sound.playCorrect();
+  };
+
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-xl mx-auto px-4 py-5 space-y-4 pb-24">
       {/* Header */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 shadow-sm">
-        <h1 className="text-2xl font-bold font-serif text-[#232120] flex items-center gap-2">
-          <SettingsIcon className="w-6 h-6 text-[#9E2A2B]" />
-          系统与算法设置
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+          <SettingsIcon className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+          <span>系统与算法设置</span>
         </h1>
-        <p className="text-xs text-[#5C5855] mt-1">
-          文言背诵运行在纯前端离线环境中，所有 FSRS 记忆指标均保存在本地 IndexedDB 中。
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+          纯前端离线运行，所有 FSRS 记忆模型与进度均保存在本地浏览器 IndexedDB
         </p>
       </div>
 
-      {/* FSRS Settings */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 shadow-sm space-y-5">
-        <h2 className="text-base font-bold text-[#232120] flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-[#2B5C8F]" />
-          FSRS-5 间隔重复算法参数
+      {/* Theme & Display Settings */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-4 transition-colors">
+        <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+          视觉与声音偏好
+        </h2>
+
+        <div className="flex items-center justify-between text-xs py-1">
+          <div>
+            <div className="font-medium text-zinc-900 dark:text-zinc-100">界面色彩主题</div>
+            <div className="text-[11px] text-zinc-400">现代极简 Zinc 浅色或深暗夜模式</div>
+          </div>
+          <div className="flex items-center gap-1 p-0.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800">
+            <button
+              onClick={() => onThemeChange && onThemeChange("light")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                theme === "light"
+                  ? "bg-white text-zinc-900 shadow-2xs font-semibold"
+                  : "text-zinc-500 hover:text-zinc-900"
+              }`}
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span>浅色冷灰</span>
+            </button>
+            <button
+              onClick={() => onThemeChange && onThemeChange("dark")}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                theme === "dark"
+                  ? "bg-zinc-900 text-zinc-100 shadow-2xs font-semibold"
+                  : "text-zinc-500 hover:text-zinc-100"
+              }`}
+            >
+              <Moon className="w-3.5 h-3.5" />
+              <span>暗夜深灰</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs py-1 border-t border-zinc-100 dark:border-zinc-800">
+          <div>
+            <div className="font-medium text-zinc-900 dark:text-zinc-100">Web Audio 原生合成编钟音效</div>
+            <div className="text-[11px] text-zinc-400">纯代码数学合成，无需下载外部音频资源</div>
+          </div>
+          <button
+            onClick={handleTestSound}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>试听和弦</span>
+          </button>
+        </div>
+      </div>
+
+      {/* FSRS Algorithm Settings */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-4 transition-colors">
+        <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+          <Sliders className="w-3.5 h-3.5 text-zinc-500" />
+          <span>FSRS-5 算法调优参数</span>
         </h2>
 
         <div className="space-y-4 text-xs">
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="font-semibold text-[#232120]">期望记忆保留率 (Request Retention)</label>
-              <span className="font-bold text-[#2B5C8F]">{Math.round(retention * 100)}%</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">期望记忆保留率 (Request Retention)</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{Math.round(retention * 100)}%</span>
             </div>
             <input
               type="range"
@@ -80,15 +153,17 @@ export const SettingsView: React.FC = () => {
               step={0.01}
               value={retention}
               onChange={e => setRetention(parseFloat(e.target.value))}
-              className="w-full accent-[#2B5C8F]"
+              className="w-full accent-zinc-900 dark:accent-zinc-100"
             />
-            <p className="text-[11px] text-[#8C8884] mt-0.5">推荐 90%~93%，值越高复习频次越密集。</p>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              推荐 90%~93%。设定值越高，算法安排的复习频次越密集。
+            </p>
           </div>
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="font-semibold text-[#232120]">古文长篇背诵稳定性因子 (Stability Factor)</label>
-              <span className="font-bold text-[#2B5C8F]">{factor.toFixed(2)}</span>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">文言长篇稳定性因子 (Stability Factor)</span>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{factor.toFixed(2)}</span>
             </div>
             <input
               type="range"
@@ -97,100 +172,106 @@ export const SettingsView: React.FC = () => {
               step={0.02}
               value={factor}
               onChange={e => setFactor(parseFloat(e.target.value))}
-              className="w-full accent-[#2B5C8F]"
+              className="w-full accent-zinc-900 dark:accent-zinc-100"
             />
-            <p className="text-[11px] text-[#8C8884] mt-0.5">针对中国古诗文字句连贯特点优化，推荐 0.72。</p>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              推荐 0.72。针对古文起承转合长篇背诵特征的衰减曲线补偿参数。
+            </p>
           </div>
-        </div>
 
-        <div className="pt-2 border-t border-[#F0EDE1] flex justify-end">
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <div>
+              <label className="font-medium text-zinc-800 dark:text-zinc-200 block mb-1">每日新学句数上限</label>
+              <input
+                type="number"
+                min={5}
+                max={100}
+                value={dailyNewLimit}
+                onChange={e => setDailyNewLimit(parseInt(e.target.value, 10))}
+                className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100"
+              />
+            </div>
+            <div>
+              <label className="font-medium text-zinc-800 dark:text-zinc-200 block mb-1">每日温习上限</label>
+              <input
+                type="number"
+                min={20}
+                max={500}
+                value={dailyReviewLimit}
+                onChange={e => setDailyReviewLimit(parseInt(e.target.value, 10))}
+                className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100"
+              />
+            </div>
+          </div>
+
           <button
             onClick={handleSaveSettings}
-            className="px-5 py-2.5 rounded-xl bg-[#2B5C8F] hover:bg-[#1E3F63] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+            className="w-full py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold text-xs flex items-center justify-center gap-1 transition-all active:scale-[0.98]"
           >
-            {savedSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-300" /> : <ShieldCheck className="w-4 h-4" />}
-            {savedSuccess ? "参数已保存" : "保存算法配置"}
+            {savedSuccess ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>配置已保存</span>
+              </>
+            ) : (
+              <span>保存算法参数</span>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Daily Goals */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 shadow-sm space-y-4">
-        <h2 className="text-base font-bold text-[#232120]">每日学习目标与配额</h2>
+      {/* Local Storage Data Management */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-3 transition-colors">
+        <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider">
+          本地数据管理
+        </h2>
 
-        <div className="grid grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="block font-semibold text-[#232120] mb-1">每日新卡学习上限</label>
-            <input
-              type="number"
-              value={dailyNewLimit}
-              onChange={e => setDailyNewLimit(parseInt(e.target.value) || 20)}
-              className="w-full px-3 py-2 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] focus:bg-white text-sm font-bold text-[#232120]"
-            />
-          </div>
-          <div>
-            <label className="block font-semibold text-[#232120] mb-1">每日到期复习上限</label>
-            <input
-              type="number"
-              value={dailyReviewLimit}
-              onChange={e => setDailyReviewLimit(parseInt(e.target.value) || 100)}
-              className="w-full px-3 py-2 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] focus:bg-white text-sm font-bold text-[#232120]"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Backup and Data Maintenance */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 shadow-sm space-y-4">
-        <h2 className="text-base font-bold text-[#232120]">离线数据备份与维护</h2>
-        <p className="text-xs text-[#5C5855]">
-          您可以随时将学习足迹和记忆库导出为 JSON 备份文件，或在更换设备时导入。
-        </p>
-
-        <div className="flex flex-wrap gap-3">
+        <div className="flex gap-2">
           <button
             onClick={handleExportData}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] hover:bg-[#F0EDE1] text-xs font-bold text-[#232120] flex items-center justify-center gap-1.5 transition-all"
+            className="flex-1 py-2 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-center gap-1.5 transition-colors"
           >
-            <Download className="w-4 h-4 text-[#2C4F3D]" />
-            导出学习记忆备份 (.json)
+            <Download className="w-3.5 h-3.5" />
+            <span>导出备份 JSON</span>
           </button>
 
           <button
-            onClick={() => {
-              setShowResetConfirm(true);
-            }}
-            className="py-2.5 px-4 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-bold text-red-600 flex items-center gap-1.5 transition-all"
+            onClick={() => setShowResetConfirm(true)}
+            className="py-2 px-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20 hover:bg-red-100/50 text-xs font-medium text-red-600 dark:text-red-400 flex items-center gap-1.5 transition-colors"
           >
-            <Trash2 className="w-4 h-4" />
-            重置记忆库
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>重置数据</span>
           </button>
         </div>
       </div>
 
       {/* Reset Confirmation Dialog */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white border-2 border-red-500 rounded-3xl p-6 max-w-sm w-full shadow-2xl">
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-3">
-              <AlertTriangle className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-center text-[#232120]">确认重置所有背诵记录？</h3>
-            <p className="text-xs text-center text-[#5C5855] mt-1 mb-5">
-              此操作将清除本地所有的 FSRS 卡片记忆状态、复习日志和打卡天数，且不可撤销！
+
+            <h3 className="text-base font-semibold text-center text-zinc-900 dark:text-zinc-100">
+              确认清空所有背诵记忆数据？
+            </h3>
+            <p className="text-xs text-center text-zinc-500 dark:text-zinc-400 mt-1 mb-5">
+              此操作将完全抹去本地 IndexedDB 中的所有卡片稳定性、学习打卡日志与卡壳标记，不可逆。
             </p>
-            <div className="flex gap-2 text-xs">
+
+            <div className="flex gap-2">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl border border-[#D5CFBD] font-bold text-[#5C5855]"
+                className="flex-1 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
               >
                 取消
               </button>
               <button
                 onClick={handleReset}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold"
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-xs"
               >
-                确认清空
+                确认彻底清空
               </button>
             </div>
           </div>

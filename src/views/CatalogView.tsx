@@ -1,6 +1,21 @@
 import React, { useState, useMemo } from "react";
-import { ALL_ARTICLES, Article, MODULES } from "../data/curriculumData";
-import { Search, Layers, Eye, BookOpen, X, BookmarkCheck } from "lucide-react";
+import { ALL_ARTICLES, Article } from "../data/curriculumData";
+import {
+  DYNASTY_GROUPS,
+  DynastyEra,
+  GENRE_GROUPS,
+  GenreCategory,
+  filterArticlesMulti
+} from "../data/articleTaxonomy";
+import {
+  Search,
+  Layers,
+  Eye,
+  BookOpen,
+  X,
+  Filter,
+  ChevronDown
+} from "lucide-react";
 import { NavView } from "../components/Navbar";
 
 interface CatalogViewProps {
@@ -10,226 +25,272 @@ interface CatalogViewProps {
 
 export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, selectedScope }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedModuleFilter, setSelectedModuleFilter] = useState<string>("ALL");
+  const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
+  const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
+  const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
   const [readingArticle, setReadingArticle] = useState<Article | null>(null);
 
+  // Performance chunking: render 18 initially, load more on demand
+  const [visibleCount, setVisibleCount] = useState<number>(18);
+
   const filteredArticles = useMemo(() => {
-    let list = ALL_ARTICLES;
+    return filterArticlesMulti(ALL_ARTICLES, {
+      scopeId: selectedCurriculum,
+      dynastyEra: selectedDynasty,
+      genreCategory: selectedGenre,
+      searchQuery: searchQuery
+    });
+  }, [selectedCurriculum, selectedDynasty, selectedGenre, searchQuery]);
 
-    if (selectedModuleFilter === "GAOKAO72") {
-      list = list.filter(a => a.isGaoKao72);
-    } else if (selectedModuleFilter !== "ALL") {
-      list = list.filter(a => a.moduleId === selectedModuleFilter);
-    }
+  // Sliced articles for zero-lag rendering
+  const displayedArticles = useMemo(() => {
+    return filteredArticles.slice(0, visibleCount);
+  }, [filteredArticles, visibleCount]);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        a =>
-          a.title.toLowerCase().includes(q) ||
-          a.author.toLowerCase().includes(q) ||
-          a.dynasty.toLowerCase().includes(q) ||
-          a.fullContent.includes(q)
-      );
-    }
+  const handleResetFilters = () => {
+    setSelectedCurriculum("ALL");
+    setSelectedDynasty("ALL");
+    setSelectedGenre("ALL");
+    setSearchQuery("");
+    setVisibleCount(18);
+  };
 
-    return list;
-  }, [selectedModuleFilter, searchQuery]);
+  const hasActiveFilters = selectedCurriculum !== "ALL" || selectedDynasty !== "ALL" || selectedGenre !== "ALL" || searchQuery.trim().length > 0;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      {/* Search & Filter Header */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 mb-6 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
+      {/* Search & Multi-dimensional Filter Bar */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs space-y-4 transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold font-serif text-[#232120] flex items-center gap-2">
+            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
               <span>高中课标古诗文典库</span>
-              <span className="text-xs font-sans px-2.5 py-0.5 rounded-full bg-[#9E2A2B]/10 text-[#9E2A2B] font-bold border border-[#9E2A2B]/20">
-                11 册教材 · 100 篇收录
+              <span className="text-xs font-mono font-medium px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                收录 100 篇
               </span>
             </h1>
-            <p className="text-xs text-[#5C5855] mt-1">
-              全量收录古文岛课标篇目，支持快速进入滚雪球串联、渐进遮挡与全篇精读。
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              四维立体检索课标名篇，支持一键转入滚雪球串联、渐进遮挡与全篇精读
             </p>
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-[#8C8884] absolute left-3 top-1/2 -translate-y-1/2" />
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="搜索诗文标题、作者、名句..."
+              placeholder="搜索标题、作者、名句..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] focus:bg-white text-xs text-[#232120] focus:outline-none focus:border-[#9E2A2B]"
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setVisibleCount(18);
+              }}
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:border-zinc-400"
             />
           </div>
         </div>
 
-        {/* Module Filter Pills */}
-        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[#F0EDE1] text-xs">
-          <button
-            onClick={() => {
-              setSelectedModuleFilter("ALL");
-            }}
-            className={`px-3 py-1.5 rounded-lg border font-semibold transition-all ${
-              selectedModuleFilter === "ALL"
-                ? "bg-[#9E2A2B] text-white border-[#7A1E1F]"
-                : "bg-white border-[#D5CFBD] text-[#5C5855] hover:bg-[#FAF7F0]"
-            }`}
-          >
-            全部 (100)
-          </button>
-
-          <button
-            onClick={() => {
-              setSelectedModuleFilter("GAOKAO72");
-            }}
-            className={`px-3 py-1.5 rounded-lg border font-semibold transition-all ${
-              selectedModuleFilter === "GAOKAO72"
-                ? "bg-amber-500 text-white border-amber-600 font-bold"
-                : "bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100"
-            }`}
-          >
-            ★ 高考 72 篇必背
-          </button>
-
-          {MODULES.map(m => (
+        {/* 1. Curricular Tier Segmented Bar */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+          <span className="text-[11px] text-zinc-400 w-12 shrink-0">课标：</span>
+          {[
+            { id: "ALL", label: "全部 (100)" },
+            { id: "GAOKAO72", label: "★ 高考必背 72 篇" },
+            { id: "BX_ALL", label: "必修全套 (36)" },
+            { id: "XB_ALL", label: "选择性必修 (35)" }
+          ].map(c => (
             <button
-              key={m.id}
+              key={c.id}
               onClick={() => {
-                setSelectedModuleFilter(m.id);
+                setSelectedCurriculum(c.id);
+                setVisibleCount(18);
               }}
-              className={`px-2.5 py-1.5 rounded-lg border font-medium transition-all ${
-                selectedModuleFilter === m.id
-                  ? "bg-[#2C4F3D] text-white border-[#1E432F] font-bold"
-                  : "bg-white border-[#E3DEC3] text-[#5C5855] hover:bg-[#FAF7F0]"
+              className={`px-2.5 py-1 rounded-md transition-colors ${
+                selectedCurriculum === c.id
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               }`}
             >
-              {m.shortName} ({m.totalArticles})
+              {c.label}
             </button>
           ))}
         </div>
+
+        {/* 2. Dynasty Era Filter Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-[11px] text-zinc-400 w-12 shrink-0">朝代：</span>
+          {DYNASTY_GROUPS.map(d => (
+            <button
+              key={d.id}
+              onClick={() => {
+                setSelectedDynasty(d.id);
+                setVisibleCount(18);
+              }}
+              className={`px-2 py-0.5 rounded-md transition-colors text-xs ${
+                selectedDynasty === d.id
+                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-medium"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 3. Genre Filter Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-[11px] text-zinc-400 w-12 shrink-0">体裁：</span>
+          {GENRE_GROUPS.map(g => (
+            <button
+              key={g.id}
+              onClick={() => {
+                setSelectedGenre(g.id);
+                setVisibleCount(18);
+              }}
+              className={`px-2 py-0.5 rounded-md transition-colors text-xs ${
+                selectedGenre === g.id
+                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-medium"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
+              className="ml-auto text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 underline underline-offset-2"
+            >
+              重置所有筛选
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Articles Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredArticles.map(article => (
+      {/* Results Count Bar */}
+      <div className="flex items-center justify-between text-xs text-zinc-400 mb-3 px-1">
+        <span>已筛选找到 <strong>{filteredArticles.length}</strong> 篇诗文</span>
+        <span>当前显示 {displayedArticles.length} 篇</span>
+      </div>
+
+      {/* Articles Grid (Chunk Rendered for 60fps) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        {displayedArticles.map(article => (
           <div
             key={article.id}
-            className="bg-white/80 backdrop-blur border border-[#E3DEC3] hover:border-[#9E2A2B]/50 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
           >
             <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span className="text-[11px] text-[#8C8884]">
-                  〔{article.dynasty}〕{article.author} · {article.genre}
-                </span>
+              <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 mb-1">
+                <span>{article.dynasty} · {article.author}</span>
                 <div className="flex items-center gap-1">
-                  {article.recitationScope && article.recitationScope !== "FULL_TEXT" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-[#2B5C8F] font-bold border border-blue-200">
-                      {article.recitationScope}
-                    </span>
-                  )}
+                  <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
+                    {article.genre}
+                  </span>
                   {article.isGaoKao72 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                      高考72篇
+                    <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-mono text-[10px] font-semibold">
+                      高考72
                     </span>
                   )}
                 </div>
               </div>
 
-              <h3 className="text-lg font-serif font-bold text-[#232120] mb-2">
+              <h3 className="text-base font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
                 《{article.title}》
               </h3>
 
-              <p className="text-xs text-[#5C5855] line-clamp-3 leading-relaxed mb-4 font-serif bg-[#FAF7F0] p-2.5 rounded-xl border border-[#F0EDE1]">
+              <p className="text-xs font-classical text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-4 bg-zinc-50 dark:bg-zinc-800/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
                 {article.fullContent}
               </p>
             </div>
 
-            <div className="flex items-center gap-1.5 pt-3 border-t border-[#F0EDE1] text-xs">
+            <div className="flex items-center gap-1.5 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/60 text-xs">
               <button
-                onClick={() => {
-                  onOpenArticleInView(article.id, "snowball");
-                }}
-                className="flex-1 py-1.5 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2B5C8F] font-bold border border-blue-200 flex items-center justify-center gap-1 transition-all"
+                onClick={() => onOpenArticleInView(article.id, "snowball")}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium flex items-center justify-center gap-1 transition-colors"
               >
                 <Layers className="w-3.5 h-3.5" />
-                滚雪球
+                <span>滚雪球</span>
               </button>
 
               <button
-                onClick={() => {
-                  onOpenArticleInView(article.id, "cloze");
-                }}
-                className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#2C4F3D] font-bold border border-emerald-200 flex items-center justify-center gap-1 transition-all"
+                onClick={() => onOpenArticleInView(article.id, "cloze")}
+                className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
               >
                 <Eye className="w-3.5 h-3.5" />
-                遮挡
+                <span>遮挡</span>
               </button>
 
               <button
-                onClick={() => {
-                  setReadingArticle(article);
-                }}
-                className="py-1.5 px-2.5 rounded-lg bg-[#FAF7F0] hover:bg-[#F0EDE1] text-[#232120] font-semibold border border-[#D5CFBD] flex items-center gap-1 transition-all"
+                onClick={() => setReadingArticle(article)}
+                className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
               >
-                <BookOpen className="w-3.5 h-3.5 text-[#9E2A2B]" />
-                精读
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>精读</span>
               </button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Reader Modal */}
+      {/* Load More Button for Chunk Rendering */}
+      {visibleCount < filteredArticles.length && (
+        <div className="text-center pt-6">
+          <button
+            onClick={() => setVisibleCount(prev => prev + 24)}
+            className="px-5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors shadow-2xs"
+          >
+            加载更多篇目（剩余 {filteredArticles.length - visibleCount} 篇）
+          </button>
+        </div>
+      )}
+
+      {/* Minimal Reader Modal */}
       {readingArticle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-[#F7F4EB] border border-[#E3DEC3] rounded-3xl p-6 sm:p-8 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-[#E3DEC3]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <div>
-                <h2 className="text-2xl font-serif font-bold text-[#232120]">
+                <h2 className="text-xl font-classical font-semibold text-zinc-900 dark:text-zinc-100">
                   《{readingArticle.title}》
                 </h2>
-                <div className="text-xs text-[#8C8884] mt-0.5">
+                <div className="text-xs text-zinc-400 mt-0.5">
                   〔{readingArticle.dynasty}〕{readingArticle.author} · {readingArticle.genre}
                 </div>
               </div>
               <button
                 onClick={() => setReadingArticle(null)}
-                className="p-1.5 rounded-xl hover:bg-black/5 text-[#8C8884] hover:text-[#232120]"
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-6 space-y-6 pr-2">
-              {/* Text paragraphs */}
-              <div className="bg-white rounded-2xl p-6 border border-[#E3DEC3] space-y-4">
-                <div className="text-xs font-bold text-[#9E2A2B]">【原文诵读】</div>
+            <div className="flex-1 overflow-y-auto py-5 space-y-4 pr-1">
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-zinc-500">【原文诵读】</div>
                 {readingArticle.paragraphs.map((p, idx) => (
-                  <p key={idx} className="text-lg font-serif leading-loose tracking-wide indent-8 text-[#232120]">
+                  <p key={idx} className="text-base font-classical leading-relaxed indent-8 text-zinc-900 dark:text-zinc-100">
                     {p}
                   </p>
                 ))}
               </div>
 
-              {/* Translation */}
               {readingArticle.translation && (
-                <div className="bg-white rounded-2xl p-6 border border-[#E3DEC3] space-y-2">
-                  <div className="text-xs font-bold text-[#2B5C8F]">【白话译文】</div>
-                  <p className="text-sm font-serif leading-relaxed text-[#5C5855]">
+                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1.5">
+                  <div className="text-xs font-semibold text-zinc-500">【白话译文】</div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
                     {readingArticle.translation}
                   </p>
                 </div>
               )}
 
-              {/* Annotations */}
               {readingArticle.annotations.length > 0 && (
-                <div className="bg-white rounded-2xl p-6 border border-[#E3DEC3] space-y-2">
-                  <div className="text-xs font-bold text-[#2C4F3D]">【重点字词注解】</div>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#5C5855]">
+                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+                  <div className="text-xs font-semibold text-zinc-500">【重点字词注解】</div>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
                     {readingArticle.annotations.map((ann, idx) => (
-                      <li key={idx} className="bg-[#FAF7F0] p-2 rounded-lg border border-[#F0EDE1]">
+                      <li key={idx} className="bg-zinc-50 dark:bg-zinc-800/40 p-2 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
                         {ann}
                       </li>
                     ))}
@@ -238,17 +299,17 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
               )}
             </div>
 
-            <div className="pt-4 border-t border-[#E3DEC3] flex justify-end gap-3">
+            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2">
               <button
                 onClick={() => {
                   const id = readingArticle.id;
                   setReadingArticle(null);
                   onOpenArticleInView(id, "snowball");
                 }}
-                className="px-4 py-2.5 rounded-xl bg-[#2B5C8F] hover:bg-[#1E3F63] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-semibold flex items-center gap-1.5"
               >
-                <Layers className="w-4 h-4" />
-                以此篇开启滚雪球串联
+                <Layers className="w-3.5 h-3.5" />
+                <span>以此篇开启滚雪球</span>
               </button>
             </div>
           </div>

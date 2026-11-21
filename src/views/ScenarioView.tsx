@@ -2,34 +2,81 @@ import React, { useState, useMemo } from "react";
 import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scenarioData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
-import { HelpCircle, Check, X, Eye, ArrowRight, RotateCcw, AlertCircle, BookOpen } from "lucide-react";
+import {
+  HelpCircle,
+  Check,
+  ArrowRight,
+  RotateCcw,
+  AlertCircle,
+  Layers,
+  ChevronRight,
+  X
+} from "lucide-react";
+
+interface DiffChar {
+  char: string;
+  expected?: string;
+  status: "correct" | "wrong" | "missing";
+}
 
 export const ScenarioView: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userInput, setUserInput] = useState("");
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
   const [isEvaluated, setIsEvaluated] = useState(false);
-  const [score, setScore] = useState(0);
-  const [testedCount, setTestedCount] = useState(0);
+  const [answeredMap, setAnsweredMap] = useState<Map<number, boolean>>(new Map()); // index -> isCorrect
+  const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
 
   const currentQ: GaoKaoScenarioQuestion = GAOKAO_SCENARIO_QUESTIONS[currentIndex] || GAOKAO_SCENARIO_QUESTIONS[0];
+
+  // Character-by-character diff engine
+  const diffResult = useMemo<DiffChar[]>(() => {
+    if (!isEvaluated) return [];
+
+    const normUser = userInput.replace(/[，。？！；：、“”‘’\s]/g, "");
+    const normAns = currentQ.answer.replace(/[，。？！；：、“”‘’\s]/g, "");
+
+    const diffs: DiffChar[] = [];
+    const maxLen = Math.max(normUser.length, normAns.length);
+
+    for (let i = 0; i < maxLen; i++) {
+      const uChar = normUser[i];
+      const aChar = normAns[i];
+
+      if (uChar && aChar) {
+        if (uChar === aChar) {
+          diffs.push({ char: uChar, status: "correct" });
+        } else {
+          diffs.push({ char: uChar, expected: aChar, status: "wrong" });
+        }
+      } else if (!uChar && aChar) {
+        diffs.push({ char: "_", expected: aChar, status: "missing" });
+      } else if (uChar && !aChar) {
+        diffs.push({ char: uChar, status: "wrong" });
+      }
+    }
+    return diffs;
+  }, [isEvaluated, userInput, currentQ.answer]);
 
   const handleVerify = () => {
     setIsEvaluated(true);
     setIsAnswerRevealed(true);
 
-    // Normalize comparison: remove all punctuations and spaces
     const normUser = userInput.replace(/[，。？！；：、“”‘’\s]/g, "");
     const normAns = currentQ.answer.replace(/[，。？！；：、“”‘’\s]/g, "");
 
     const isMatch = normUser === normAns;
     if (isMatch) {
       sound.playCorrect();
-      setScore(prev => prev + 1);
     } else {
       sound.playWrong();
     }
-    setTestedCount(prev => prev + 1);
+
+    setAnsweredMap(prev => {
+      const next = new Map(prev);
+      next.set(currentIndex, isMatch);
+      return next;
+    });
   };
 
   const handleNext = () => {
@@ -45,92 +92,160 @@ export const ScenarioView: React.FC = () => {
     setIsEvaluated(false);
   };
 
+  const insertPunctuation = (punct: string) => {
+    setUserInput(prev => prev + punct);
+  };
+
+  const totalAnswered = answeredMap.size;
+  const correctCount = Array.from(answeredMap.values()).filter(Boolean).length;
+
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
-      {/* Header */}
+    <div className="max-w-2xl mx-auto px-4 py-5 pb-24">
+      {/* Header Bar */}
       <div className="flex items-center justify-between mb-4 text-xs">
-        <span className="font-bold text-[#2C4F3D] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
-          <HelpCircle className="w-4 h-4" />
-          高考情境化理解性默写真题库 · 第 {currentIndex + 1} / {GAOKAO_SCENARIO_QUESTIONS.length} 题
-        </span>
-        <div className="text-[#5C5855]">
-          已作答 {testedCount} 题 ｜ 正确率：
-          <span className="font-bold text-[#9E2A2B]">
-            {testedCount > 0 ? Math.round((score / testedCount) * 100) : 0}%
+        <button
+          onClick={() => setShowQuestionDrawer(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors font-medium"
+        >
+          <Layers className="w-3.5 h-3.5 text-zinc-500" />
+          <span>题号索引：第 {currentIndex + 1} / {GAOKAO_SCENARIO_QUESTIONS.length} 题</span>
+          <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
+        </button>
+
+        <div className="text-zinc-500 dark:text-zinc-400 font-mono">
+          已答 {totalAnswered} 题 ｜ 正确率：
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+            {totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0}%
           </span>
         </div>
       </div>
 
       {/* Main Question Card */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5 transition-colors">
         <div>
-          <div className="flex items-center gap-2 text-xs text-[#8C8884] mb-2">
-            <span className="font-bold text-[#9E2A2B] px-2 py-0.5 rounded bg-red-50 border border-red-200">
+          <div className="flex items-center gap-2 text-xs mb-2">
+            <span className="font-semibold font-classical text-zinc-900 dark:text-zinc-100 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800">
               《{currentQ.articleTitle}》
             </span>
-            <span>{currentQ.author}</span>
+            <span className="text-zinc-400">{currentQ.author}</span>
           </div>
 
-          <h3 className="text-base sm:text-lg font-bold font-serif text-[#232120] leading-relaxed">
+          <h3 className="text-base sm:text-lg font-classical font-medium text-zinc-900 dark:text-zinc-100 leading-relaxed">
             {currentQ.prompt}
           </h3>
         </div>
 
-        {/* Input Box */}
-        <div className="space-y-3">
+        {/* Input Box & Quick Punctuation */}
+        <div className="space-y-2.5">
           <textarea
             rows={2}
             value={userInput}
             onChange={e => setUserInput(e.target.value)}
             disabled={isAnswerRevealed}
             placeholder="在此默写名句（如：君子生非异也，善假于物也）..."
-            className="w-full px-4 py-3 rounded-2xl border border-[#D5CFBD] bg-[#FAF7F0] focus:bg-white text-base font-serif text-[#232120] focus:outline-none focus:border-[#9E2A2B] leading-relaxed transition-all resize-none"
+            className="w-full px-3.5 py-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-base font-classical text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:border-zinc-400 dark:focus:border-zinc-600 leading-relaxed transition-all resize-none"
           />
 
           {!isAnswerRevealed && (
-            <div className="flex gap-2">
-              <button
-                onClick={handleVerify}
-                className="flex-1 py-3 rounded-xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white font-bold text-sm shadow-sm flex items-center justify-center gap-1.5 transition-all"
-              >
-                <Check className="w-4 h-4" />
-                提交默写并核验
-              </button>
-              <button
-                onClick={() => {
-                  sound.playReveal();
-                  setIsAnswerRevealed(true);
-                  setIsEvaluated(false);
-                }}
-                className="py-3 px-4 rounded-xl border border-[#D5CFBD] bg-white hover:bg-[#FAF7F0] text-xs font-bold text-[#5C5855] transition-all"
-              >
-                直接查看正解
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              {/* Quick Punctuations for Mobile */}
+              <div className="flex items-center gap-1">
+                {["，", "。", "！", "？", "；"].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => insertPunctuation(p)}
+                    className="px-2 py-1 text-xs rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-mono transition-colors"
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    sound.playReveal();
+                    setIsAnswerRevealed(true);
+                    setIsEvaluated(false);
+                  }}
+                  className="py-2 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  看正解
+                </button>
+                <button
+                  onClick={handleVerify}
+                  className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs font-semibold flex items-center gap-1 transition-all active:scale-[0.98]"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>提交核对</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Revealed Answer & Exam Notes */}
+        {/* Character-by-Character Diff Output */}
+        {isEvaluated && diffResult.length > 0 && (
+          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/80 space-y-2 animate-in fade-in duration-150">
+            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">逐字比对诊断：</div>
+            <div className="flex flex-wrap gap-1.5 text-lg font-classical">
+              {diffResult.map((d, idx) => {
+                if (d.status === "correct") {
+                  return (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center justify-center w-7 h-7 rounded bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold"
+                    >
+                      {d.char}
+                    </span>
+                  );
+                }
+                if (d.status === "wrong") {
+                  return (
+                    <div key={idx} className="relative inline-flex flex-col items-center">
+                      <span className="text-[10px] text-zinc-400 font-sans -mb-1">{d.expected}</span>
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 font-semibold line-through">
+                        {d.char}
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={idx} className="relative inline-flex flex-col items-center">
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans -mb-1">
+                      {d.expected}
+                    </span>
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-dashed border-amber-400 text-amber-600 dark:text-amber-400 font-semibold">
+                      缺
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Revealed Standard Answer & Notes */}
         {isAnswerRevealed && (
-          <div className="space-y-4 pt-4 border-t border-[#F0EDE1] animate-in fade-in duration-200">
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
-              <div className="text-xs font-bold text-[#2C4F3D] mb-1">【标答正解】</div>
-              <p className="text-xl font-serif font-bold text-[#232120] leading-relaxed">
+          <div className="space-y-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/60 animate-in fade-in duration-150">
+            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200 dark:border-zinc-800">
+              <div className="text-[11px] font-medium text-zinc-400 mb-1">【高考标答正解】</div>
+              <p className="text-lg font-classical font-semibold text-zinc-900 dark:text-zinc-100">
                 {currentQ.answer}
               </p>
             </div>
 
             {currentQ.keyPoints.length > 0 && (
               <div>
-                <div className="text-xs font-bold text-[#5C5855] mb-2 flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                  易错字与通假字采分警示：
+                <div className="text-[11px] font-medium text-zinc-500 mb-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>易错字与通假采分警示：</span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {currentQ.keyPoints.map((pt, idx) => (
                     <span
                       key={idx}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-medium"
+                      className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium"
                     >
                       {pt}
                     </span>
@@ -140,22 +255,76 @@ export const ScenarioView: React.FC = () => {
             )}
 
             {currentQ.explanation && (
-              <div className="text-xs text-[#5C5855] leading-relaxed bg-[#FAF7F0] p-3 rounded-xl border border-[#E3DEC3]">
-                <strong className="text-[#232120]">真题考点导析：</strong>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed bg-zinc-50 dark:bg-zinc-800/40 p-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60">
+                <strong className="text-zinc-700 dark:text-zinc-300">真题考点导析：</strong>
                 {currentQ.explanation}
-              </div>
+              </p>
             )}
 
             <button
               onClick={handleNext}
-              className="w-full py-3.5 rounded-xl bg-[#2C4F3D] hover:bg-[#1E432F] text-white font-bold text-sm shadow-md flex items-center justify-center gap-1.5 transition-all"
+              className="w-full py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1 transition-all active:scale-[0.98]"
             >
-              下一题
-              <ArrowRight className="w-4 h-4" />
+              <span>下一题</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
       </div>
+
+      {/* Question Index Palette Drawer */}
+      {showQuestionDrawer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">题目快速跳转</h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  共 {GAOKAO_SCENARIO_QUESTIONS.length} 道历年高考情境真题
+                </p>
+              </div>
+              <button
+                onClick={() => setShowQuestionDrawer(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 grid grid-cols-6 sm:grid-cols-8 gap-2 overflow-y-auto flex-1">
+              {GAOKAO_SCENARIO_QUESTIONS.map((q, idx) => {
+                const isCurrent = idx === currentIndex;
+                const hasAnswered = answeredMap.has(idx);
+                const isCorrect = answeredMap.get(idx);
+
+                return (
+                  <button
+                    key={q.id}
+                    onClick={() => {
+                      setCurrentIndex(idx);
+                      setUserInput("");
+                      setIsAnswerRevealed(false);
+                      setIsEvaluated(false);
+                      setShowQuestionDrawer(false);
+                    }}
+                    className={`h-10 rounded-lg text-xs font-mono font-medium transition-colors flex items-center justify-center ${
+                      isCurrent
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-bold"
+                        : hasAnswered
+                        ? isCorrect
+                          ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300"
+                          : "bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

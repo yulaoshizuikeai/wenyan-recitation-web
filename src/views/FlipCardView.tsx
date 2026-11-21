@@ -1,12 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
-import { generateFlashcardsForArticle, Flashcard } from "../data/flashcardGenerator";
+import { Flashcard } from "../data/flashcardGenerator";
+import { flashcardCache } from "../data/flashcardCache";
+import { filterArticlesByScope } from "../data/articleTaxonomy";
 import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
 import { CardFsrsState, Rating, CardState } from "../domain/fsrs/fsrsTypes";
 import { getCardState, saveCardState, recordReviewLog, getAllCardStates } from "../storage/db";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
-import { RotateCw, CheckCircle, Sparkles, BookOpen, Trophy, Clock, Zap, Shuffle, ListFilter } from "lucide-react";
+import {
+  RotateCw,
+  CheckCircle,
+  Sparkles,
+  BookOpen,
+  Trophy,
+  Clock,
+  Zap,
+  Shuffle
+} from "lucide-react";
 
 type QueueMode = "due" | "new" | "article" | "random";
 
@@ -20,22 +31,12 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
 
   // Filter articles based on selected scope
   const targetArticles = useMemo(() => {
-    let list = ALL_ARTICLES;
-    if (selectedScope === "GAOKAO72") {
-      list = list.filter(a => a.isGaoKao72);
-    } else if (selectedScope === "BX_ALL") {
-      list = list.filter(a => a.moduleId.startsWith("MODULE_BX"));
-    } else if (selectedScope === "XB_ALL") {
-      list = list.filter(a => a.moduleId.startsWith("MODULE_XB"));
-    } else if (selectedScope !== "ALL") {
-      list = list.filter(a => a.moduleId === selectedScope);
-    }
-    return list;
+    return filterArticlesByScope(ALL_ARTICLES, selectedScope);
   }, [selectedScope]);
 
-  // Generate all flashcards in current scope
+  // Use FlashcardCache to avoid 350ms synchronous parsing lock!
   const allCards = useMemo(() => {
-    return targetArticles.flatMap(a => generateFlashcardsForArticle(a));
+    return flashcardCache.getCardsForArticles(targetArticles);
   }, [targetArticles]);
 
   const [queueMode, setQueueMode] = useState<QueueMode>("due");
@@ -46,7 +47,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
   const [cardStatesMap, setCardStatesMap] = useState<Map<string, CardFsrsState>>(new Map());
   const [isLoadingStates, setIsLoadingStates] = useState(true);
 
-  // Load all card states from IndexedDB
+  // Load all card states from IndexedDB once
   const refreshCardStates = useCallback(async () => {
     try {
       const states = await getAllCardStates();
@@ -62,8 +63,9 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     refreshCardStates();
   }, [refreshCardStates]);
 
-  // Compute counts for queue badges
   const now = Date.now();
+
+  // Optimized O(N) due cards calculation
   const dueCardsAll = useMemo(() => {
     return allCards.filter(card => {
       const state = cardStatesMap.get(card.id);
@@ -92,10 +94,9 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     }
     if (queueMode === "article") {
       const art = ALL_ARTICLES.find(a => a.id === selectedArticleId);
-      return art ? generateFlashcardsForArticle(art) : [];
+      return art ? flashcardCache.getCardsForArticle(art) : [];
     }
     if (queueMode === "random") {
-      // Shuffled sample of 25 cards
       const shuffled = [...allCards].sort(() => 0.5 - Math.random());
       return shuffled.slice(0, 25);
     }
@@ -110,7 +111,6 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
 
   const currentFlashcard: Flashcard | undefined = sessionCards[currentIndex];
 
-  // Whenever queue mode or article changes, reset session progress
   const handleSwitchMode = (mode: QueueMode) => {
     setQueueMode(mode);
     setCurrentIndex(0);
@@ -119,25 +119,25 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     setSessionFinished(false);
   };
 
-  // Load state for current flashcard
+  // Load state for current flashcard instantly from cache or DB
   useEffect(() => {
     if (!currentFlashcard) return;
-    let isMounted = true;
-    getCardState(currentFlashcard.id).then(state => {
-      if (isMounted) {
+    const existing = cardStatesMap.get(currentFlashcard.id);
+    if (existing) {
+      setCurrentCardState(existing);
+      setIsFlipped(false);
+    } else {
+      getCardState(currentFlashcard.id).then(state => {
         setCurrentCardState(state || fsrs.createInitialCard(currentFlashcard.id));
         setIsFlipped(false);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [currentFlashcard, fsrs]);
+      });
+    }
+  }, [currentFlashcard, cardStatesMap, fsrs]);
 
   // Interval previews for 4 ratings
   const intervalBadges = useMemo(() => {
     if (!currentCardState) {
-      return { [Rating.AGAIN]: "<10分", [Rating.HARD]: "1天", [Rating.GOOD]: "3天", [Rating.EASY]: "15天" };
+      return { [Rating.AGAIN]: "<10分", [Rating.HARD]: "1天", [Rating.GOOD]: "4天", [Rating.EASY]: "16天" };
     }
     return fsrs.previewIntervals(currentCardState);
   }, [currentCardState, fsrs]);
@@ -147,6 +147,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     setIsFlipped(prev => !prev);
   };
 
+  // O(1) in-memory rating evaluation with async DB persistence
   const handleRate = async (rating: Rating) => {
     if (!currentCardState || !currentFlashcard) return;
 
@@ -156,15 +157,17 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     else sound.playEasy();
 
     const result = fsrs.evaluateReview(currentCardState, rating);
-    await saveCardState(result.updatedCard);
-    await recordReviewLog(result.reviewLog);
 
-    // Update local card states map
+    // Instant O(1) state update
     setCardStatesMap(prev => {
       const next = new Map(prev);
       next.set(result.updatedCard.cardId, result.updatedCard);
       return next;
     });
+
+    // Fire and forget DB persistence
+    saveCardState(result.updatedCard);
+    recordReviewLog(result.reviewLog);
 
     setCompletedCount(prev => prev + 1);
 
@@ -178,10 +181,12 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     }
   };
 
-  // Keyboard shortcut support
+  // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (sessionFinished) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
       if (e.code === "Space" || e.code === "Enter") {
         e.preventDefault();
         handleFlip();
@@ -198,75 +203,80 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
 
   if (isLoadingStates) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center text-[#8C8884] text-xs">
-        正在读取 FSRS 算法记忆档案...
+      <div className="max-w-xl mx-auto px-4 py-16 text-center text-zinc-400 text-xs">
+        载入 FSRS 记忆档案中...
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="max-w-xl mx-auto px-4 py-5 pb-24">
       {/* Mode Switcher Tabs */}
-      <div className="flex items-center justify-between gap-1 p-1 bg-[#EAE5D4]/70 rounded-2xl mb-5 text-xs font-semibold overflow-x-auto">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mb-5 text-xs font-medium">
         <button
           onClick={() => handleSwitchMode("due")}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${
             queueMode === "due"
-              ? "bg-white text-[#9E2A2B] shadow-xs font-bold"
-              : "text-[#5C5855] hover:text-[#232120]"
+              ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+              : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           }`}
         >
           <Clock className="w-3.5 h-3.5" />
           <span>待复习</span>
-          <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${dueCardsAll.length > 0 ? "bg-red-500 text-white" : "bg-neutral-200 text-neutral-600"}`}>
+          <span
+            className={`font-mono text-[10px] px-1 rounded ${
+              dueCardsAll.length > 0
+                ? "bg-red-500 text-white"
+                : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300"
+            }`}
+          >
             {dueCardsAll.length}
           </span>
         </button>
 
         <button
           onClick={() => handleSwitchMode("new")}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${
             queueMode === "new"
-              ? "bg-white text-[#9E2A2B] shadow-xs font-bold"
-              : "text-[#5C5855] hover:text-[#232120]"
+              ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+              : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           }`}
         >
           <Zap className="w-3.5 h-3.5" />
-          <span>学新卡</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold">
+          <span>新卡</span>
+          <span className="font-mono text-[10px] px-1 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
             {newCardsAll.length}
           </span>
         </button>
 
         <button
           onClick={() => handleSwitchMode("article")}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${
             queueMode === "article"
-              ? "bg-white text-[#9E2A2B] shadow-xs font-bold"
-              : "text-[#5C5855] hover:text-[#232120]"
+              ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+              : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           }`}
         >
           <BookOpen className="w-3.5 h-3.5" />
-          <span>选篇背诵</span>
+          <span>选篇</span>
         </button>
 
         <button
           onClick={() => handleSwitchMode("random")}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${
             queueMode === "random"
-              ? "bg-white text-[#9E2A2B] shadow-xs font-bold"
-              : "text-[#5C5855] hover:text-[#232120]"
+              ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold"
+              : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           }`}
         >
           <Shuffle className="w-3.5 h-3.5" />
-          <span>随机抽查</span>
+          <span>随机抽</span>
         </button>
       </div>
 
       {/* Article Selector Dropdown for 'article' Mode */}
       {queueMode === "article" && (
-        <div className="mb-4 flex items-center gap-2">
-          <label className="text-xs text-[#5C5855] font-semibold whitespace-nowrap">当前诗文：</label>
+        <div className="mb-4">
           <select
             value={selectedArticleId}
             onChange={e => {
@@ -276,155 +286,140 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
               setCompletedCount(0);
               setSessionFinished(false);
             }}
-            className="w-full text-xs bg-white border border-[#D5CFBD] rounded-xl px-3 py-2 font-serif font-bold text-[#232120] focus:outline-hidden focus:border-[#9E2A2B]"
+            className="w-full text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-zinc-800 dark:text-zinc-200 focus:outline-hidden focus:border-zinc-400"
           >
             {targetArticles.map(a => (
               <option key={a.id} value={a.id}>
-                《{a.title}》〔{a.dynasty}·{a.author}〕{a.isGaoKao72 ? "★" : ""}
+                《{a.title}》· {a.author} ({a.dynasty})
               </option>
             ))}
           </select>
         </div>
       )}
 
-      {/* Empty State Handler */}
+      {/* Empty State */}
       {sessionCards.length === 0 ? (
-        <div className="max-w-md mx-auto py-12 text-center animate-in fade-in duration-200">
-          <div className="bg-white border border-[#E3DEC3] rounded-3xl p-8 shadow-xs">
-            <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-[#232120]">
-              {queueMode === "due" ? "今日暂无待复习闪卡！" : "当前筛选暂无可用闪卡"}
-            </h2>
-            <p className="text-xs text-[#5C5855] mt-1.5 mb-6 leading-relaxed">
-              {queueMode === "due"
-                ? "FSRS 遗忘曲线状态优异，名句记忆巩固度高。可以开启新卡学习或自选篇目精背。"
-                : "请尝试切换教材范围或选择其他篇目。"}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <button
-                onClick={() => handleSwitchMode("new")}
-                className="py-2.5 px-4 rounded-xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white font-bold text-xs shadow-xs"
-              >
-                开启新卡学习（{Math.min(25, newCardsAll.length)} 句）
-              </button>
-              <button
-                onClick={() => handleSwitchMode("article")}
-                className="py-2.5 px-4 rounded-xl bg-white border border-[#D5CFBD] hover:bg-[#F0EDE1] text-xs font-semibold text-[#232120]"
-              >
-                选择特定篇目
-              </button>
-            </div>
+        <div className="py-12 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 shadow-xs">
+          <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+            {queueMode === "due" ? "今日暂无待复习闪卡" : "当前范围暂无可用闪卡"}
+          </h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-5">
+            {queueMode === "due"
+              ? "名句记忆稳定性良好，已完全消化。可以学习新卡或自选特定篇目。"
+              : "请尝试切换教材范围或选择其他篇目。"}
+          </p>
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={() => handleSwitchMode("new")}
+              className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-medium text-xs"
+            >
+              学习新词句 ({Math.min(25, newCardsAll.length)})
+            </button>
           </div>
         </div>
       ) : sessionFinished ? (
-        <div className="max-w-md mx-auto py-12 text-center animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-white border-2 border-[#D4AF37] rounded-3xl p-8 shadow-xl">
-            <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto mb-4 border border-amber-300">
-              <Trophy className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-serif font-bold text-[#232120]">本次闪卡温习大捷！</h2>
-            <p className="text-xs text-[#5C5855] mt-2 mb-6 leading-relaxed">
-              已成功温习 <strong>{completedCount}</strong> 张名句闪卡。FSRS-5 算法已为每张卡片安排最佳复习间隔。
-            </p>
-            <button
-              onClick={() => {
-                setCurrentIndex(0);
-                setCompletedCount(0);
-                setSessionFinished(false);
-                refreshCardStates();
-              }}
-              className="w-full py-3.5 rounded-xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white font-bold text-sm shadow-md"
-            >
-              开启下一组复习
-            </button>
+        <div className="py-12 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 shadow-xs animate-in zoom-in-95 duration-150">
+          <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 flex items-center justify-center mx-auto mb-3">
+            <Trophy className="w-6 h-6" />
           </div>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">本次闪卡温习完成</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-5">
+            已成功温习 <strong>{completedCount}</strong> 张闪卡，FSRS 间隔重复算法已计算下次复习时机。
+          </p>
+          <button
+            onClick={() => {
+              setCurrentIndex(0);
+              setCompletedCount(0);
+              setSessionFinished(false);
+              refreshCardStates();
+            }}
+            className="w-full py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-medium text-xs"
+          >
+            开启下一组
+          </button>
         </div>
       ) : (
         <>
           {/* Progress Header */}
-          <div className="flex items-center justify-between mb-3 text-xs">
-            <span className="font-bold text-[#5C5855] flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-[#9E2A2B]" />
-              第 {currentIndex + 1} 张 / 本组共 {sessionCards.length} 张
+          <div className="flex items-center justify-between mb-2 text-xs">
+            <span className="text-zinc-500 dark:text-zinc-400">
+              第 <strong>{currentIndex + 1}</strong> / {sessionCards.length} 张
             </span>
-            <span className="text-[#8C8884] hidden sm:inline">
-              空格键翻转 · 数字键 1-4 评分
+            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono hidden sm:inline">
+              空格翻卡 ｜ 1-4 评分
             </span>
           </div>
 
-          <div className="w-full h-1.5 bg-[#EAE5D4] rounded-full overflow-hidden mb-5">
+          <div className="w-full h-1 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-4">
             <div
-              className="h-full bg-[#9E2A2B] transition-all duration-300"
+              className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all duration-200"
               style={{ width: `${((currentIndex + 1) / sessionCards.length) * 100}%` }}
             />
           </div>
 
-          {/* 3D Flip Card Container */}
+          {/* 3D Flip Card Container with GPU Acceleration */}
           <div
-            className="w-full min-h-[380px] cursor-pointer perspective-1000 mb-6"
+            className="w-full min-h-[340px] cursor-pointer perspective-1000 mb-5 select-none"
             onClick={handleFlip}
           >
             <div
-              className={`relative w-full min-h-[380px] rounded-3xl border border-[#E3DEC3] shadow-md transition-transform duration-500 transform-style-3d ${
+              className={`relative w-full min-h-[340px] rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xs transition-transform duration-500 transform-style-3d gpu-accelerate ${
                 isFlipped ? "rotate-y-180" : ""
               }`}
             >
               {/* Card Front */}
-              <div className="absolute inset-0 w-full h-full bg-white rounded-3xl p-6 sm:p-8 flex flex-col justify-between backface-hidden">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-[#8C8884] mb-3">
-                    <span className="font-bold px-2 py-0.5 rounded bg-[#FAF7F0] border border-[#E3DEC3] text-[#5C5855]">
-                      {currentFlashcard?.frontTitle}
-                    </span>
-                    <span>轻触翻转看对句</span>
-                  </div>
+              <div className="absolute inset-0 w-full h-full bg-white dark:bg-zinc-900 rounded-2xl p-6 flex flex-col justify-between backface-hidden">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-medium text-zinc-600 dark:text-zinc-300">
+                    {currentFlashcard?.frontTitle}
+                  </span>
+                  <span>轻触核对</span>
+                </div>
+
+                <div className="my-auto py-4 text-center">
+                  <p className="text-xl sm:text-2xl font-classical font-semibold text-zinc-900 dark:text-zinc-100 leading-relaxed">
+                    {currentFlashcard?.frontPrompt}
+                  </p>
                   {currentFlashcard?.frontHint && (
-                    <div className="text-xs text-[#9E2A2B] font-semibold mb-4">
+                    <div className="text-xs text-zinc-400 dark:text-zinc-500 mt-2">
                       {currentFlashcard.frontHint}
                     </div>
                   )}
                 </div>
 
-                <div className="my-auto py-4">
-                  <p className="text-xl sm:text-2xl font-serif font-bold text-[#232120] leading-relaxed text-center tracking-wide">
-                    {currentFlashcard?.frontPrompt}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center gap-1 text-xs text-[#8C8884] pt-4 border-t border-[#F0EDE1]">
-                  <RotateCw className="w-3.5 h-3.5 text-[#9E2A2B]" />
-                  点击卡片或按空格翻转核验
+                <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                  <RotateCw className="w-3 h-3 text-zinc-400" />
+                  <span>点击卡片或按空格翻转</span>
                 </div>
               </div>
 
               {/* Card Back */}
-              <div className="absolute inset-0 w-full h-full bg-[#FAF7F0] rounded-3xl p-6 sm:p-8 flex flex-col justify-between rotate-y-180 backface-hidden border-2 border-[#9E2A2B]/20">
-                <div>
-                  <div className="flex items-center justify-between text-xs text-[#8C8884] mb-2">
-                    <span className="font-bold text-[#2C4F3D] px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200">
-                      正解与考点
-                    </span>
-                    <span className="text-[#8C8884]">{currentFlashcard?.frontTitle}</span>
-                  </div>
+              <div className="absolute inset-0 w-full h-full bg-zinc-50 dark:bg-zinc-900/90 rounded-2xl p-6 flex flex-col justify-between rotate-y-180 backface-hidden border border-zinc-300 dark:border-zinc-700">
+                <div className="flex items-center justify-between text-xs text-zinc-400">
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                    名句正解
+                  </span>
+                  <span>{currentFlashcard?.frontTitle}</span>
                 </div>
 
-                <div className="my-auto py-2 space-y-4">
-                  <div className="p-4 rounded-2xl bg-white border border-[#E3DEC3] shadow-2xs">
-                    <p className="text-lg sm:text-xl font-serif font-bold text-[#9E2A2B] leading-relaxed text-center">
+                <div className="my-auto py-2 space-y-3">
+                  <div className="p-3.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                    <p className="text-lg sm:text-xl font-classical font-semibold text-zinc-900 dark:text-zinc-100 leading-relaxed text-center">
                       {currentFlashcard?.fullVerseContext || currentFlashcard?.backAnswer}
                     </p>
                   </div>
 
                   {currentFlashcard?.backTranslation && (
-                    <div className="text-xs text-[#5C5855] leading-relaxed bg-white/60 p-3 rounded-xl border border-[#F0EDE1]">
-                      <strong className="text-[#232120]">白话义：</strong>
+                    <div className="text-xs text-zinc-600 dark:text-zinc-400 bg-white/60 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-200/60 dark:border-zinc-800/60 leading-relaxed">
+                      <strong className="text-zinc-800 dark:text-zinc-200 font-medium">白话释义：</strong>
                       {currentFlashcard.backTranslation}
                     </div>
                   )}
                 </div>
 
-                <div className="text-center text-[11px] text-[#8C8884] pt-2 border-t border-[#E3DEC3]">
-                  在下方选择记忆反馈，触发 FSRS 间隔重复计算
+                <div className="text-center text-[10px] text-zinc-400 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                  选择记忆反馈（快捷键 1-4）
                 </div>
               </div>
             </div>
@@ -432,46 +427,50 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
 
           {/* FSRS 4 Rating Buttons */}
           {isFlipped ? (
-            <div className="grid grid-cols-4 gap-2.5 sm:gap-3 animate-in fade-in duration-200">
+            <div className="grid grid-cols-4 gap-2 animate-in fade-in duration-100">
               <button
                 onClick={() => handleRate(Rating.AGAIN)}
-                className="flex flex-col items-center justify-center py-3 px-2 rounded-2xl bg-red-50 hover:bg-red-100 border border-red-300 text-red-800 transition-all shadow-xs"
+                className="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20 text-red-700 dark:text-red-400 hover:bg-red-100/50 transition-colors"
+                title="快捷键: 1"
               >
-                <span className="text-xs font-bold">1. 重来</span>
-                <span className="text-[10px] text-red-600 mt-0.5">{intervalBadges[Rating.AGAIN]}</span>
+                <span className="text-xs font-semibold">1. 重来</span>
+                <span className="text-[10px] opacity-80 mt-0.5">{intervalBadges[Rating.AGAIN]}</span>
               </button>
 
               <button
                 onClick={() => handleRate(Rating.HARD)}
-                className="flex flex-col items-center justify-center py-3 px-2 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 transition-all shadow-xs"
+                className="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100/50 transition-colors"
+                title="快捷键: 2"
               >
-                <span className="text-xs font-bold">2. 困难</span>
-                <span className="text-[10px] text-amber-600 mt-0.5">{intervalBadges[Rating.HARD]}</span>
+                <span className="text-xs font-semibold">2. 困难</span>
+                <span className="text-[10px] opacity-80 mt-0.5">{intervalBadges[Rating.HARD]}</span>
               </button>
 
               <button
                 onClick={() => handleRate(Rating.GOOD)}
-                className="flex flex-col items-center justify-center py-3 px-2 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-800 transition-all shadow-xs"
+                className="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+                title="快捷键: 3"
               >
-                <span className="text-xs font-bold">3. 良好</span>
-                <span className="text-[10px] text-blue-600 mt-0.5">{intervalBadges[Rating.GOOD]}</span>
+                <span className="text-xs font-semibold">3. 良好</span>
+                <span className="text-[10px] opacity-80 mt-0.5">{intervalBadges[Rating.GOOD]}</span>
               </button>
 
               <button
                 onClick={() => handleRate(Rating.EASY)}
-                className="flex flex-col items-center justify-center py-3 px-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 transition-all shadow-xs"
+                className="flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100/50 transition-colors"
+                title="快捷键: 4"
               >
-                <span className="text-xs font-bold">4. 简单</span>
-                <span className="text-[10px] text-emerald-600 mt-0.5">{intervalBadges[Rating.EASY]}</span>
+                <span className="text-xs font-semibold">4. 简单</span>
+                <span className="text-[10px] opacity-80 mt-0.5">{intervalBadges[Rating.EASY]}</span>
               </button>
             </div>
           ) : (
             <button
               onClick={handleFlip}
-              className="w-full py-3.5 rounded-2xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+              className="w-full py-3 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
             >
-              <RotateCw className="w-4 h-4" />
-              显示答案（核验对句）
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>核对正解 (Space)</span>
             </button>
           )}
         </>

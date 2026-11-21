@@ -4,7 +4,17 @@ import { Heatmap } from "../components/Heatmap";
 import { getAllCardStates, getDailyRecords } from "../storage/db";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
 import { NavView } from "../components/Navbar";
-import { Layers, Sparkles, HelpCircle, BookOpen, ChevronRight, Award, Zap } from "lucide-react";
+import {
+  Layers,
+  Sparkles,
+  BookOpen,
+  ChevronRight,
+  Flame,
+  Clock,
+  CheckCircle,
+  BarChart,
+  ArrowUpRight
+} from "lucide-react";
 
 interface DashboardViewProps {
   onNavigate: (view: NavView) => void;
@@ -25,7 +35,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     getDailyRecords().then(setDailyRecords);
   }, []);
 
-  // Compute stats
   const totalReviews = useMemo(() => {
     return dailyRecords.reduce((acc, r) => acc + r.count, 0);
   }, [dailyRecords]);
@@ -92,99 +101,91 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, []);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-      {/* Welcome Banner */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-[#9E2A2B] via-[#852324] to-[#2C4F3D] rounded-3xl p-6 sm:p-8 text-white shadow-md">
-        <div className="relative z-10 max-w-2xl space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur text-xs font-bold text-amber-200 border border-white/20">
-            <Award className="w-3.5 h-3.5" />
-            高中语文 11 册教材 · 100 篇经典古诗文
+    <div className="max-w-5xl mx-auto px-4 py-5 space-y-5">
+      {/* Hero Welcome Card */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 shadow-xs transition-colors">
+        <div className="max-w-2xl space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs font-mono text-zinc-600 dark:text-zinc-400">
+            <span>普通高中语文课标 11 册 · 100 篇经典收录</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold tracking-wide">
-            文言背诵 · 滚雪球串联与 FSRS-5 记忆系统
+
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            文言背诵 · 现代间隔重复系统
           </h1>
-          <p className="text-xs sm:text-sm text-white/80 leading-relaxed font-serif">
-            学不可以已。循序渐进，以滚雪球逐联递推攻坚长篇文赋，依托科学记忆算法锁定长久保留率。
+
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed font-classical">
+            学不可以已。循序渐进，以滚雪球串联递推长篇文赋，依托科学 FSRS-5 算法锁定永久记忆留存。
           </p>
 
-          <div className="pt-4 flex flex-wrap gap-3">
+          <div className="pt-3 flex flex-wrap gap-2.5">
             <button
-              onClick={() => {
-                onNavigate("snowball");
-              }}
-              className="py-2.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition-all"
+              onClick={() => onNavigate("snowball")}
+              className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-zinc-800 dark:hover:bg-white active:scale-[0.98]"
             >
               <Layers className="w-4 h-4" />
-              开启长篇滚雪球背诵
+              <span>开启长篇滚雪球</span>
             </button>
 
             <button
-              onClick={() => {
-                onNavigate("flipcard");
-              }}
-              className="py-2.5 px-4 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 border border-white/30 backdrop-blur transition-all"
+              onClick={() => onNavigate("flipcard")}
+              className="py-2 px-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs sm:text-sm font-medium flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
             >
-              <Sparkles className="w-4 h-4" />
-              今日闪卡复习
+              <Sparkles className="w-4 h-4 text-zinc-500" />
+              <span>温习待复习闪卡</span>
               {dueCardsCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px]">
+                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded-full bg-red-500 text-white font-bold">
                   {dueCardsCount}
                 </span>
               )}
             </button>
           </div>
         </div>
-
-        {/* Classical decorative background motif */}
-        <div className="absolute -right-8 -bottom-8 w-64 h-64 rounded-full border-8 border-white/5 pointer-events-none select-none flex items-center justify-center font-serif text-9xl text-white/10 font-black">
-          诵
-        </div>
       </div>
 
       {/* Top 4 Metric Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#5C5855] mb-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs transition-colors">
+          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
             <span>连续坚持</span>
-            <span className="text-lg">🔥</span>
+            <Flame className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold font-serif text-[#9E2A2B]">
-            {streak} <span className="text-xs font-sans text-[#8C8884]">天</span>
+          <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
+            {streak} <span className="text-xs font-sans font-normal text-zinc-400">天</span>
           </div>
-          <p className="text-[11px] text-[#8C8884] mt-1">保持每日连贯温习</p>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">保持每日连贯温习</p>
         </div>
 
-        <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#5C5855] mb-2">
-            <span>今日到期待复习</span>
-            <span className="text-lg">📜</span>
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs transition-colors">
+          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
+            <span>到期待复习</span>
+            <Clock className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold font-serif text-[#2B5C8F]">
-            {dueCardsCount} <span className="text-xs font-sans text-[#8C8884]">句</span>
+          <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
+            {dueCardsCount} <span className="text-xs font-sans font-normal text-zinc-400">句</span>
           </div>
-          <p className="text-[11px] text-[#8C8884] mt-1">FSRS 遗忘曲线到期句</p>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">FSRS 遗忘曲线到期</p>
         </div>
 
-        <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#5C5855] mb-2">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs transition-colors">
+          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
             <span>熟读成诵率</span>
-            <span className="text-lg">🌿</span>
+            <CheckCircle className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold font-serif text-[#2C4F3D]">
+          <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
             {masteryPercent}%
           </div>
-          <p className="text-[11px] text-[#8C8884] mt-1">{matureCardsCount} 句已牢固熟记</p>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">{matureCardsCount} 句已牢固熟记</p>
         </div>
 
-        <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs text-[#5C5855] mb-2">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs transition-colors">
+          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1.5">
             <span>累计复习词句</span>
-            <span className="text-lg">🏆</span>
+            <BarChart className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold font-serif text-[#232120]">
-            {totalReviews} <span className="text-xs font-sans text-[#8C8884]">次</span>
+          <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">
+            {totalReviews} <span className="text-xs font-sans font-normal text-zinc-400">次</span>
           </div>
-          <p className="text-[11px] text-[#8C8884] mt-1">研墨累积诵读次数</p>
+          <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">累计研墨诵读次数</p>
         </div>
       </div>
 
@@ -192,66 +193,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <Heatmap records={dailyRecords} streak={streak} totalReviews={totalReviews} />
 
       {/* Recommended Core Articles for Snowball Recitation */}
-      <div className="bg-white/90 backdrop-blur border border-[#E3DEC3] rounded-3xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-serif font-bold text-[#232120] flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-600" />
-              高考必背长篇核心攻坚推荐（滚雪球首选）
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <span>高考必背长篇核心攻坚推荐（滚雪球首选）</span>
             </h2>
-            <p className="text-xs text-[#5C5855] mt-0.5">
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
               全国高考命题超高频文赋，建议使用滚雪球串联逐联突破
             </p>
           </div>
           <button
-            onClick={() => {
-              onNavigate("catalog");
-            }}
-            className="text-xs text-[#9E2A2B] hover:underline font-bold flex items-center gap-1"
+            onClick={() => onNavigate("catalog")}
+            className="text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-0.5"
           >
-            查看全部 100 篇
-            <ChevronRight className="w-4 h-4" />
+            <span>全量 100 篇</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {recommendedArticles.map(article => (
             <div
               key={article.id}
-              className="p-4 rounded-2xl border border-[#E3DEC3] bg-[#FAF7F0] hover:bg-white hover:border-[#9E2A2B]/40 transition-all flex flex-col justify-between"
+              className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col justify-between"
             >
               <div>
-                <div className="flex items-center justify-between text-xs text-[#8C8884] mb-1">
+                <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">
                   <span>〔{article.dynasty}〕{article.author}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                  <span className="text-[10px] font-mono px-1.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium">
                     高考72篇
                   </span>
                 </div>
-                <h3 className="text-base font-serif font-bold text-[#232120] mb-1.5">
+                <h3 className="text-sm font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
                   《{article.title}》
                 </h3>
-                <p className="text-xs text-[#5C5855] line-clamp-2 leading-relaxed mb-3 font-serif">
+                <p className="text-xs font-classical text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-3">
                   {article.fullContent}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 pt-2 border-t border-[#F0EDE1]">
+              <div className="flex items-center gap-1.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 text-xs">
                 <button
-                  onClick={() => {
-                    onOpenArticleInView(article.id, "snowball");
-                  }}
-                  className="flex-1 py-1.5 px-2 rounded-lg bg-[#2B5C8F] hover:bg-[#1E3F63] text-white text-xs font-bold flex items-center justify-center gap-1 shadow-2xs transition-all"
+                  onClick={() => onOpenArticleInView(article.id, "snowball")}
+                  className="flex-1 py-1 px-2 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium flex items-center justify-center gap-1 transition-colors"
                 >
-                  <Layers className="w-3.5 h-3.5" />
-                  滚雪球背诵
+                  <Layers className="w-3 h-3" />
+                  <span>滚雪球</span>
                 </button>
                 <button
-                  onClick={() => {
-                    onOpenArticleInView(article.id, "cloze");
-                  }}
-                  className="py-1.5 px-2.5 rounded-lg bg-white border border-[#D5CFBD] hover:bg-[#F0EDE1] text-xs font-semibold text-[#232120] transition-all"
+                  onClick={() => onOpenArticleInView(article.id, "cloze")}
+                  className="py-1 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  渐进遮挡
+                  遮挡
                 </button>
               </div>
             </div>

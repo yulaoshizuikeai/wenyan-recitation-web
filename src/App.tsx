@@ -9,20 +9,23 @@ import { CatalogView } from "./views/CatalogView";
 import { SettingsView } from "./views/SettingsView";
 import { sound } from "./sound/audioSynthesizer";
 import { getSetting, setSetting } from "./storage/db";
+import { getStoredTheme, applyTheme, AppTheme } from "./utils/theme";
 
 export function App() {
   const [currentView, setCurrentView] = useState<NavView>("dashboard");
   const [selectedScope, setSelectedScope] = useState<string>("ALL");
   const [activeArticleId, setActiveArticleId] = useState<string>("art_bx1_12"); // 劝学
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
+  const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
 
   useEffect(() => {
+    applyTheme(theme);
     getSetting<string>("selected_scope", "ALL").then(setSelectedScope);
     getSetting<boolean>("sound_enabled", false).then(val => {
       setSoundEnabled(val);
       sound.enabled = val;
     });
-  }, []);
+  }, [theme]);
 
   const handleSelectScope = (scope: string) => {
     setSelectedScope(scope);
@@ -39,10 +42,11 @@ export function App() {
   const handleOpenArticleInView = (articleId: string, view: NavView) => {
     setActiveArticleId(articleId);
     setCurrentView(view);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F4EB] text-[#232120] font-serif">
+    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
       {/* Top Navbar */}
       <Navbar
         currentView={currentView}
@@ -51,10 +55,12 @@ export function App() {
         onSelectScope={handleSelectScope}
         soundEnabled={soundEnabled}
         onToggleSound={handleToggleSound}
+        theme={theme}
+        onThemeChange={setTheme}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 pb-16">
+      {/* Main Content Area (padding-bottom accounts for mobile bottom dock) */}
+      <main className="flex-1 pb-20 lg:pb-10">
         {currentView === "dashboard" && (
           <DashboardView
             onNavigate={setCurrentView}
@@ -96,15 +102,18 @@ export function App() {
         )}
 
         {currentView === "settings" && (
-          <SettingsView />
+          <SettingsView
+            theme={theme}
+            onThemeChange={setTheme}
+          />
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-[#E3DEC3] bg-[#FAF7F0] py-6 text-center text-xs text-[#8C8884]">
+      {/* Minimal Footer (hidden on mobile to make room for bottom dock) */}
+      <footer className="hidden lg:block border-t border-zinc-200 dark:border-zinc-800 py-6 text-center text-xs text-zinc-400 dark:text-zinc-500 transition-colors">
         <div className="max-w-7xl mx-auto px-4 space-y-1">
-          <p className="font-semibold text-[#5C5855]">
-            文言背诵 · 现代高中语文古诗文 FSRS-5 间隔重复与长篇滚雪球串联背诵系统
+          <p className="font-medium text-zinc-600 dark:text-zinc-400">
+            文言背诵 · 现代高中语文古诗文 FSRS-5 间隔重复与长篇滚动式背诵系统
           </p>
           <p className="text-[11px]">
             100% 纯前端离线应用 ｜ 数据完全保存在本地浏览器 IndexedDB ｜ 适合部署于 Cloudflare Pages / Workers

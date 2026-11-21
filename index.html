@@ -5,14 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>文言背诵 · 现代古诗文 FSRS 间隔重复与长篇滚动式背诵系统</title>
     <meta name="description" content="基于 FSRS-5 算法的高中语文古诗文经典背诵系统，收录 11 册教材 100 篇诗文，支持长文滚雪球串联背诵、3D 翻转闪卡与渐进遮挡默写。" />
-    <!-- Classical Chinese Seal SVG Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%239E2A2B'/><text x='50' y='68' font-size='56' text-anchor='middle' fill='%23F7F4EB' font-family='serif' font-weight='bold'>诵</text></svg>" />
-    <!-- Web Font imports for classical Calligraphy/Song styling -->
+    <!-- Minimalist Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2318181B'/><text x='50' y='68' font-size='56' text-anchor='middle' fill='%23FAFAFA' font-family='sans-serif' font-weight='700'>诵</text></svg>" />
+    <!-- Web Font imports for classical Songti text -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('wenyan_minimal_theme');
+          var isDark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.documentElement.classList.remove('dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-[#F7F4EB] text-[#232120] antialiased selection:bg-[#9E2A2B]/20 selection:text-[#9E2A2B] min-h-screen">
+  <body class="bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 antialiased selection:bg-red-500/20 selection:text-red-600 dark:selection:text-red-400 min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
