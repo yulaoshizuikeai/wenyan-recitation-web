@@ -119,11 +119,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="pt-3 flex flex-wrap gap-2.5">
             <button
+              onClick={() => onNavigate("cram")}
+              className="py-2 px-4 rounded-xl bg-red-600 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-red-700 active:scale-[0.98] shadow-2xs"
+            >
+              <Flame className="w-4 h-4" />
+              <span>考前抱佛脚 · 核心金句</span>
+            </button>
+
+            <button
               onClick={() => onNavigate("snowball")}
               className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-zinc-800 dark:hover:bg-white active:scale-[0.98]"
             >
               <Layers className="w-4 h-4" />
-              <span>开启长篇滚雪球</span>
+              <span>长卷滚雪球</span>
             </button>
 
             <button
@@ -131,7 +139,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               className="py-2 px-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs sm:text-sm font-medium flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
             >
               <Sparkles className="w-4 h-4 text-zinc-500" />
-              <span>温习待复习闪卡</span>
+              <span>温习闪卡</span>
               {dueCardsCount > 0 && (
                 <span className="font-mono text-[10px] px-1.5 py-0.2 rounded-full bg-red-500 text-white font-bold">
                   {dueCardsCount}

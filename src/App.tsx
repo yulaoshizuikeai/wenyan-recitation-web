@@ -5,6 +5,7 @@ import { SnowballView } from "./views/SnowballView";
 import { FlipCardView } from "./views/FlipCardView";
 import { ClozeView } from "./views/ClozeView";
 import { ScenarioView } from "./views/ScenarioView";
+import { CramModeView } from "./views/CramModeView";
 import { CatalogView } from "./views/CatalogView";
 import { SettingsView } from "./views/SettingsView";
 import { sound } from "./sound/audioSynthesizer";
@@ -66,6 +67,12 @@ export function App() {
             onNavigate={setCurrentView}
             onOpenArticleInView={handleOpenArticleInView}
             selectedScope={selectedScope}
+          />
+        )}
+
+        {currentView === "cram" && (
+          <CramModeView
+            onOpenArticleInView={handleOpenArticleInView}
           />
         )}
 

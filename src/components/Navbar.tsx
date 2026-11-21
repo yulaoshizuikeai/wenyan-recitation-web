@@ -14,12 +14,13 @@ import {
   Sun,
   Moon,
   Check,
-  Search
+  Search,
+  Flame
 } from "lucide-react";
 import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
 
-export type NavView = "dashboard" | "snowball" | "flipcard" | "cloze" | "scenario" | "catalog" | "settings";
+export type NavView = "dashboard" | "cram" | "snowball" | "flipcard" | "cloze" | "scenario" | "catalog" | "settings";
 
 interface NavbarProps {
   currentView: NavView;
@@ -71,6 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const navItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "概览", icon: <BarChart2 className="w-4 h-4" /> },
+    { id: "cram", label: "考前抱佛脚", icon: <Flame className="w-4 h-4 text-red-500" /> },
     { id: "snowball", label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
     { id: "flipcard", label: "翻转闪卡", icon: <Sparkles className="w-4 h-4" /> },
     { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-4 h-4" /> },
@@ -82,9 +84,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   // Mobile Bottom Bar has 5 core items
   const mobileDockItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
     { id: "dashboard", label: "概览", icon: <BarChart2 className="w-5 h-5" /> },
+    { id: "cram", label: "抱佛脚", icon: <Flame className="w-5 h-5 text-red-500" /> },
     { id: "snowball", label: "滚雪球", icon: <Layers className="w-5 h-5" /> },
     { id: "flipcard", label: "闪卡", icon: <Sparkles className="w-5 h-5" /> },
-    { id: "cloze", label: "遮挡", icon: <Eye className="w-5 h-5" /> },
     { id: "catalog", label: "典库", icon: <BookOpen className="w-5 h-5" /> }
   ];
 
@@ -195,6 +197,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 px-2 pb-1">
               专项模式与配置
             </div>
+            <button
+              onClick={() => handleNavClick("cloze")}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                currentView === "cloze"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
+                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4" />
+                <span>渐进遮挡背诵</span>
+              </div>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+                L0-L4
+              </span>
+            </button>
+
             <button
               onClick={() => handleNavClick("scenario")}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
