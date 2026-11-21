@@ -3,6 +3,17 @@ import { setSetting, getSetting } from "./db";
 
 export type NavView = "dashboard" | "cram" | "snowball" | "flipcard" | "cloze" | "scenario" | "catalog" | "settings";
 
+export const VALID_NAV_VIEWS = new Set<string>([
+  "dashboard",
+  "cram",
+  "snowball",
+  "flipcard",
+  "cloze",
+  "scenario",
+  "catalog",
+  "settings"
+]);
+
 export const SESSION_STORAGE_KEY = "wenyan_last_session";
 export const SESSION_UPDATED_EVENT = "wenyan_session_updated";
 
@@ -44,7 +55,7 @@ export function getLastSession(): LastSessionState | null {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.view) {
+    if (!parsed || typeof parsed !== "object" || !parsed.view || !VALID_NAV_VIEWS.has(parsed.view)) {
       return null;
     }
     return parsed as LastSessionState;
@@ -102,7 +113,7 @@ export function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diffSec = Math.max(0, Math.floor((now - timestamp) / 1000));
 
-  if (diffSec < 45) return "刚刚";
+  if (diffSec < 60) return "刚刚";
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin} 分钟前`;
   const diffHour = Math.floor(diffMin / 60);

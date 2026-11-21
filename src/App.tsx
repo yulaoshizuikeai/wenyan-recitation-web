@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Navbar, NavView } from "./components/Navbar";
 import { DashboardView } from "./views/DashboardView";
 import { SnowballView } from "./views/SnowballView";
@@ -11,32 +11,50 @@ import { SettingsView } from "./views/SettingsView";
 import { sound } from "./sound/audioSynthesizer";
 import { getSetting, setSetting } from "./storage/db";
 import { getStoredTheme, applyTheme, AppTheme } from "./utils/theme";
-import { useLastSession, LastSessionState, SessionExtra } from "./storage/sessionTracker";
+import { useLastSession, LastSessionState, SessionExtra, VALID_NAV_VIEWS, getLastSession } from "./storage/sessionTracker";
+import { ALL_ARTICLES } from "./data/curriculumData";
 
 export function App() {
   const { lastSession } = useLastSession();
   const [currentView, setCurrentView] = useState<NavView>("dashboard");
   const [selectedScope, setSelectedScope] = useState<string>("ALL");
-  const [activeArticleId, setActiveArticleId] = useState<string>(() => lastSession?.articleId || "art_bx1_12"); // 劝学
+  const [activeArticleId, setActiveArticleId] = useState<string>(() => {
+    if (lastSession?.articleId && ALL_ARTICLES.some(a => a.id === lastSession.articleId)) {
+      return lastSession.articleId;
+    }
+    return "art_bx1_12"; // 劝学
+  });
   const [resumeExtra, setResumeExtra] = useState<SessionExtra | undefined>(undefined);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
+  const hasAutoResumedRef = useRef<boolean>(false);
 
+  // Apply theme changes to document
   useEffect(() => {
     applyTheme(theme);
+  }, [theme]);
+
+  // Initial application startup settings (run once on mount)
+  useEffect(() => {
     getSetting<string>("selected_scope", "ALL").then(setSelectedScope);
     getSetting<boolean>("sound_enabled", false).then(val => {
       setSoundEnabled(val);
       sound.enabled = val;
     });
 
-    // Check if auto resume on launch is enabled
-    getSetting<boolean>("auto_resume_on_startup", false).then(autoResume => {
-      if (autoResume && lastSession) {
-        handleResumeLastSession(lastSession);
-      }
-    });
-  }, [theme]);
+    // Check if auto resume on launch is enabled (only once on startup)
+    if (!hasAutoResumedRef.current) {
+      hasAutoResumedRef.current = true;
+      getSetting<boolean>("auto_resume_on_startup", false).then(autoResume => {
+        if (autoResume) {
+          const session = getLastSession();
+          if (session && session.view !== "dashboard") {
+            handleResumeLastSession(session);
+          }
+        }
+      });
+    }
+  }, []);
 
   const handleSelectScope = (scope: string) => {
     setSelectedScope(scope);
@@ -58,7 +76,11 @@ export function App() {
   };
 
   const handleResumeLastSession = (session: LastSessionState) => {
-    if (session.articleId) {
+    if (!VALID_NAV_VIEWS.has(session.view)) {
+      setCurrentView("dashboard");
+      return;
+    }
+    if (session.articleId && ALL_ARTICLES.some(a => a.id === session.articleId)) {
       setActiveArticleId(session.articleId);
     }
     setResumeExtra(session.extra);
@@ -132,6 +154,8 @@ export function App() {
 
         {currentView === "catalog" && (
           <CatalogView
+            initialArticleId={activeArticleId}
+            resumeExtra={resumeExtra}
             onOpenArticleInView={handleOpenArticleInView}
             onResumeSession={handleResumeLastSession}
             selectedScope={selectedScope}

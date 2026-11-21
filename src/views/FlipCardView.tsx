@@ -136,10 +136,18 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
       setQueueMode(resumeExtra.queueMode as QueueMode);
     }
     if (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex >= 0) {
-      setCurrentIndex(resumeExtra.cardIndex);
-      setHasRestoredNotice(resumeExtra.cardIndex > 0);
+      const clamped = sessionCards.length > 0 ? Math.min(resumeExtra.cardIndex, sessionCards.length - 1) : resumeExtra.cardIndex;
+      setCurrentIndex(clamped);
+      setHasRestoredNotice(clamped > 0);
     }
-  }, [resumeExtra]);
+  }, [resumeExtra, sessionCards.length]);
+
+  // Keep currentIndex clamped within bounds whenever sessionCards changes
+  useEffect(() => {
+    if (sessionCards.length > 0 && currentIndex >= sessionCards.length) {
+      setCurrentIndex(Math.max(0, sessionCards.length - 1));
+    }
+  }, [sessionCards.length, currentIndex]);
 
   const [isFlipped, setIsFlipped] = useState(false);
   const [currentCardState, setCurrentCardState] = useState<CardFsrsState | null>(null);

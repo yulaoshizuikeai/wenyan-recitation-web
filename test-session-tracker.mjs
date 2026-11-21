@@ -2,13 +2,13 @@ import assert from "node:assert";
 
 console.log("=== Running Session Tracker Unit & Edge Case Tests ===");
 
-// 1. Time formatting function tests (testing identical algorithm)
+// 1. Time formatting function tests (testing identical algorithm from sessionTracker.ts)
 function formatRelativeTime(timestamp) {
   if (!timestamp || isNaN(timestamp)) return "近期";
   const now = Date.now();
   const diffSec = Math.max(0, Math.floor((now - timestamp) / 1000));
 
-  if (diffSec < 45) return "刚刚";
+  if (diffSec < 60) return "刚刚";
   const diffMin = Math.floor(diffSec / 60);
   if (diffMin < 60) return `${diffMin} 分钟前`;
   const diffHour = Math.floor(diffMin / 60);
@@ -52,7 +52,15 @@ function getModeDisplayName(view) {
 const now = Date.now();
 assert.strictEqual(formatRelativeTime(now), "刚刚", "Immediate timestamp should be '刚刚'");
 assert.strictEqual(formatRelativeTime(now - 30 * 1000), "刚刚", "30s ago should be '刚刚'");
-assert.strictEqual(formatRelativeTime(now - 120 * 1000), "2 分钟前", "2m ago should be '2 分钟前'");
+
+// Probe previous bug: 50s and 59s ago should return "刚刚", NEVER "0 分钟前"!
+assert.strictEqual(formatRelativeTime(now - 50 * 1000), "刚刚", "50s ago must be '刚刚', not '0 分钟前'");
+assert.strictEqual(formatRelativeTime(now - 59 * 1000), "刚刚", "59s ago must be '刚刚', not '0 分钟前'");
+
+// Exact minute transitions
+assert.strictEqual(formatRelativeTime(now - 60 * 1000), "1 分钟前", "60s ago should be '1 分钟前'");
+assert.strictEqual(formatRelativeTime(now - 119 * 1000), "1 分钟前", "119s ago should be '1 分钟前'");
+assert.strictEqual(formatRelativeTime(now - 120 * 1000), "2 分钟前", "120s ago should be '2 分钟前'");
 assert.strictEqual(formatRelativeTime(now - 45 * 60 * 1000), "45 分钟前", "45m ago should be '45 分钟前'");
 assert.strictEqual(formatRelativeTime(now - 3 * 3600 * 1000), "3 小时前", "3h ago should be '3 小时前'");
 
@@ -67,7 +75,10 @@ assert.strictEqual(formatRelativeTime(0), "近期", "0 timestamp should return '
 assert.strictEqual(formatRelativeTime(NaN), "近期", "NaN timestamp should return '近期'");
 assert.strictEqual(formatRelativeTime(null), "近期", "null timestamp should return '近期'");
 
-console.log("✓ formatRelativeTime tests passed");
+// Future timestamp edge case
+assert.strictEqual(formatRelativeTime(now + 10000), "刚刚", "Future timestamp should safely return '刚刚'");
+
+console.log("✓ formatRelativeTime tests passed (including 50s bug fix)");
 
 // 2. Test getModeDisplayName
 assert.strictEqual(getModeDisplayName("snowball"), "长卷滚雪球");
@@ -77,10 +88,22 @@ assert.strictEqual(getModeDisplayName("cram"), "考前抱佛脚");
 assert.strictEqual(getModeDisplayName("scenario"), "高考默写");
 assert.strictEqual(getModeDisplayName("catalog"), "诗文典库");
 assert.strictEqual(getModeDisplayName("dashboard"), "研习概览");
+assert.strictEqual(getModeDisplayName("settings"), "研习进度");
 
 console.log("✓ getModeDisplayName tests passed");
 
 // 3. LocalStorage persistence & parsing resilience
+const VALID_NAV_VIEWS = new Set([
+  "dashboard",
+  "cram",
+  "snowball",
+  "flipcard",
+  "cloze",
+  "scenario",
+  "catalog",
+  "settings"
+]);
+
 const SESSION_STORAGE_KEY = "wenyan_last_session";
 const mockStorage = new Map();
 const localStorage = {
@@ -95,7 +118,7 @@ function getLastSession() {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !parsed.view) {
+    if (!parsed || typeof parsed !== "object" || !parsed.view || !VALID_NAV_VIEWS.has(parsed.view)) {
       return null;
     }
     return parsed;
@@ -160,6 +183,36 @@ assert.strictEqual(getLastSession(), null, "Corrupted JSON should safely return 
 localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ notAValidSession: true }));
 assert.strictEqual(getLastSession(), null, "Session missing .view should return null");
 
+// Invalid view test (Probe invalid view resilience)
+localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ view: "bogus_hacked_view", progressPercent: 50 }));
+assert.strictEqual(getLastSession(), null, "Invalid view should safely return null");
+
 console.log("✓ Session storage & parsing resilience tests passed");
+
+// 4. Test Dynasty & Author formatting (Probe empty bracket bug fix)
+function formatDynastyAuthor(dynasty, author) {
+  if (!author && !dynasty) return "";
+  const dynastyPart = dynasty ? `〔${dynasty}〕` : "";
+  return `${dynastyPart}${author || ""}`;
+}
+
+assert.strictEqual(formatDynastyAuthor("战国", "荀子"), "〔战国〕荀子");
+assert.strictEqual(formatDynastyAuthor("", "李白"), "李白", "Empty dynasty should NEVER produce '〔〕'");
+assert.strictEqual(formatDynastyAuthor(undefined, "苏轼"), "苏轼", "Undefined dynasty should NEVER produce '〔〕'");
+assert.strictEqual(formatDynastyAuthor("唐", ""), "〔唐〕");
+assert.strictEqual(formatDynastyAuthor("", ""), "");
+
+console.log("✓ Dynasty & author formatting tests passed (no empty brackets)");
+
+// 5. Test Book Title Bracket Formatting (Probe mode name wrapped in 《》 bug fix)
+function formatResumeButtonLabel(session) {
+  return session.articleTitle ? `接续《${session.articleTitle}》` : `接续${session.modeName}`;
+}
+
+assert.strictEqual(formatResumeButtonLabel({ articleTitle: "赤壁赋", modeName: "长卷滚雪球" }), "接续《赤壁赋》");
+assert.strictEqual(formatResumeButtonLabel({ articleTitle: "", modeName: "考前抱佛脚" }), "接续考前抱佛脚", "Mode names should NEVER be wrapped in 《》");
+assert.strictEqual(formatResumeButtonLabel({ modeName: "高考默写" }), "接续高考默写", "Mode names should NEVER be wrapped in 《》");
+
+console.log("✓ Book title formatting tests passed (modes not wrapped in book brackets)");
 
 console.log("=== All Unit Tests Passed! ===");

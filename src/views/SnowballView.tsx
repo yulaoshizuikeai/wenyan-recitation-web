@@ -63,11 +63,37 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
     return SnowballChainingEngine.buildStages(currentArticle);
   }, [currentArticle]);
 
-  const [currentStageIndex, setCurrentStageIndex] = useState(0);
+  const [currentStageIndex, setCurrentStageIndex] = useState<number>(() => {
+    const artId = (initialArticleId && ALL_ARTICLES.some(a => a.id === initialArticleId))
+      ? initialArticleId
+      : (filteredArticles[0]?.id || "art_bx1_12");
+    if (resumeExtra?.stageIndex !== undefined && resumeExtra.stageIndex >= 0) {
+      return resumeExtra.stageIndex;
+    }
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = localStorage.getItem(`snowball_stage_${artId}`);
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val > 0) return val;
+      }
+    }
+    return 0;
+  });
+
   const [maskHistory, setMaskHistory] = useState(true);
   const [bottleneckIndices, setBottleneckIndices] = useState<Set<number>>(new Set());
   const [revealedUnitIndices, setRevealedUnitIndices] = useState<Set<number>>(new Set());
-  const [hasRestoredProgress, setHasRestoredProgress] = useState(false);
+  const [hasRestoredProgress, setHasRestoredProgress] = useState<boolean>(() => {
+    if (resumeExtra?.stageIndex !== undefined && resumeExtra.stageIndex > 0) return true;
+    const artId = (initialArticleId && ALL_ARTICLES.some(a => a.id === initialArticleId))
+      ? initialArticleId
+      : (filteredArticles[0]?.id || "art_bx1_12");
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = localStorage.getItem(`snowball_stage_${artId}`);
+      return Boolean(saved && parseInt(saved, 10) > 0);
+    }
+    return false;
+  });
   const [showSettlementModal, setShowSettlementModal] = useState(false);
   const [settlementStats, setSettlementStats] = useState<{
     totalUnits: number;
@@ -77,6 +103,12 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastResumedStageRef = useRef<number | undefined>(resumeExtra?.stageIndex);
+
+  // Sync lastResumedStageRef when a new resumeExtra is passed from above
+  useEffect(() => {
+    lastResumedStageRef.current = resumeExtra?.stageIndex;
+  }, [resumeExtra]);
 
   // Load existing bottlenecks & saved progress for article
   useEffect(() => {
@@ -84,9 +116,13 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       setBottleneckIndices(new Set(indices));
     });
 
-    // Check resumeExtra first if provided
+    // Check resumeExtra first only if it matches the current resume event
     let targetIdx = 0;
-    if (resumeExtra?.stageIndex !== undefined && resumeExtra.stageIndex < stages.length) {
+    if (
+      resumeExtra?.stageIndex !== undefined &&
+      resumeExtra.stageIndex < stages.length &&
+      resumeExtra.stageIndex === lastResumedStageRef.current
+    ) {
       targetIdx = resumeExtra.stageIndex;
     } else {
       const savedStr = localStorage.getItem(`snowball_stage_${currentArticle.id}`);
@@ -553,7 +589,10 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
                 <span>再来一遍</span>
               </button>
               <button
-                onClick={() => setShowSettlementModal(false)}
+                onClick={() => {
+                  setCurrentStageIndex(0);
+                  setShowSettlementModal(false);
+                }}
                 className="flex-[1.5] py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-white"
               >
                 完成

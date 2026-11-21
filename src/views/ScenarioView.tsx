@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scenarioData";
+import { ALL_ARTICLES } from "../data/curriculumData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
@@ -27,7 +28,7 @@ interface ScenarioViewProps {
 export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex > 0) {
-      return resumeExtra.scenarioQuestionIndex;
+      return Math.min(resumeExtra.scenarioQuestionIndex, Math.max(0, GAOKAO_SCENARIO_QUESTIONS.length - 1));
     }
     return 0;
   });
@@ -38,10 +39,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
 
   useEffect(() => {
     if (resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex >= 0) {
-      setCurrentIndex(resumeExtra.scenarioQuestionIndex);
-      setHasRestoredNotice(resumeExtra.scenarioQuestionIndex > 0);
+      const clamped = Math.min(resumeExtra.scenarioQuestionIndex, Math.max(0, GAOKAO_SCENARIO_QUESTIONS.length - 1));
+      setCurrentIndex(clamped);
+      setHasRestoredNotice(clamped > 0);
     }
   }, [resumeExtra]);
+
+  // Keep currentIndex clamped in bounds
+  useEffect(() => {
+    if (currentIndex >= GAOKAO_SCENARIO_QUESTIONS.length && GAOKAO_SCENARIO_QUESTIONS.length > 0) {
+      setCurrentIndex(GAOKAO_SCENARIO_QUESTIONS.length - 1);
+    }
+  }, [currentIndex]);
 
   const [userInput, setUserInput] = useState("");
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
@@ -54,12 +63,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
   // Synchronize session tracker
   useEffect(() => {
     if (!currentQ) return;
+    const relatedArticle = ALL_ARTICLES.find(a => a.id === currentQ.articleId);
     saveLastSession({
       view: "scenario",
-      articleId: undefined,
+      articleId: currentQ.articleId,
       articleTitle: currentQ.articleTitle,
       articleAuthor: currentQ.author,
-      articleDynasty: "",
+      articleDynasty: relatedArticle?.dynasty || "",
       modeName: "高考默写",
       progressText: `第 ${currentIndex + 1} / ${GAOKAO_SCENARIO_QUESTIONS.length} 题`,
       progressPercent: Math.min(100, Math.round(((currentIndex + 1) / GAOKAO_SCENARIO_QUESTIONS.length) * 100)),

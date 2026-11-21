@@ -61,7 +61,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         stageIndex: 0,
         cardIndex: 0,
         goldenVerseIndex: 0,
-        scenarioQuestionIndex: 0
+        scenarioQuestionIndex: 0,
+        clozeLevel: 0
       }
     });
   };
@@ -164,7 +165,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 className="py-2 px-4 rounded-xl bg-red-600 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-red-700 active:scale-[0.98] shadow-2xs"
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>接续《{lastSession.articleTitle || lastSession.modeName}》({lastSession.progressPercent}%)</span>
+                <span>
+                  {lastSession.articleTitle
+                    ? `接续《${lastSession.articleTitle}》`
+                    : `接续${lastSession.modeName}`}
+                  ({lastSession.progressPercent}%)
+                </span>
               </button>
             )}
 

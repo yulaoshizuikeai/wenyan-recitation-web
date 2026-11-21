@@ -16,7 +16,8 @@ import {
   Check,
   Search,
   Flame,
-  RotateCcw
+  RotateCcw,
+  ChevronRight
 } from "lucide-react";
 import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
@@ -162,7 +163,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
                   <span className="truncate max-w-[120px]">
-                    接续《{lastSession.articleTitle || lastSession.modeName}》
+                    {lastSession.articleTitle ? `接续《${lastSession.articleTitle}》` : `接续${lastSession.modeName}`}
                   </span>
                 </button>
               )}
@@ -214,6 +215,34 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Mobile Top Dropdown Drawer for Secondary Items */}
         {isMobileMenuOpen && (
           <div className="lg:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 space-y-1 animate-in fade-in duration-150">
+            {/* Mobile quick resume action if session exists */}
+            {lastSession && (
+              <div className="pb-2 mb-2 border-b border-zinc-100 dark:border-zinc-800">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onResumeSession && onResumeSession(lastSession);
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl border border-red-200/80 dark:border-red-900/60 bg-red-50/70 dark:bg-red-950/30 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-red-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-red-600 dark:text-red-400 font-medium">
+                        接续上次背诵进度 ({lastSession.progressPercent}%)
+                      </div>
+                      <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                        {lastSession.articleTitle ? `《${lastSession.articleTitle}》` : lastSession.modeName} · {lastSession.modeName}
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-red-500 shrink-0 ml-1" />
+                </button>
+              </div>
+            )}
+
             <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 px-2 pb-1">
               专项模式与配置
             </div>

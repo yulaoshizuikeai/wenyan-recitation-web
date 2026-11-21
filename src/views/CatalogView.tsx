@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import {
   DYNASTY_GROUPS,
@@ -17,16 +17,20 @@ import {
   ChevronDown
 } from "lucide-react";
 import { NavView } from "../components/Navbar";
-import { useLastSession, LastSessionState, saveLastSession } from "../storage/sessionTracker";
+import { useLastSession, LastSessionState, saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { PickUpCard } from "../components/PickUpCard";
 
 interface CatalogViewProps {
+  initialArticleId?: string;
+  resumeExtra?: SessionExtra;
   onOpenArticleInView: (articleId: string, view: NavView) => void;
   onResumeSession?: (session: LastSessionState) => void;
   selectedScope: string;
 }
 
 export const CatalogView: React.FC<CatalogViewProps> = ({
+  initialArticleId,
+  resumeExtra,
   onOpenArticleInView,
   onResumeSession,
   selectedScope
@@ -35,11 +39,33 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
   const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
-  const [readingArticle, setReadingArticle] = useState<Article | null>(null);
+  const [readingArticle, setReadingArticle] = useState<Article | null>(() => {
+    if (resumeExtra?.openReader && initialArticleId) {
+      return ALL_ARTICLES.find(a => a.id === initialArticleId) || null;
+    }
+    return null;
+  });
 
   const { lastSession, clearSession } = useLastSession();
 
+  // If resumed into catalog with an openReader target, open reading modal
+  useEffect(() => {
+    if (resumeExtra?.openReader && initialArticleId) {
+      const art = ALL_ARTICLES.find(a => a.id === initialArticleId);
+      if (art) {
+        setReadingArticle(art);
+      }
+    }
+  }, [resumeExtra, initialArticleId]);
+
   const handleResume = (session: LastSessionState) => {
+    if (session.view === "catalog" && session.articleId) {
+      const art = ALL_ARTICLES.find(a => a.id === session.articleId);
+      if (art) {
+        setReadingArticle(art);
+        return;
+      }
+    }
     if (onResumeSession) {
       onResumeSession(session);
     } else if (session.articleId) {
@@ -58,7 +84,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       modeName: "诗文典库",
       progressText: "全文研览",
       progressPercent: 100,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      extra: {
+        openReader: true
+      }
     });
   };
 
