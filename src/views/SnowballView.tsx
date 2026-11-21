@@ -171,11 +171,16 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
                 {currentArticle.dynasty} · {currentArticle.author} · {currentArticle.genre}
               </span>
             </div>
-            <h1 className="text-2xl font-bold font-serif text-[#232120] mt-1 flex items-center gap-2">
+            <h1 className="text-2xl font-bold font-serif text-[#232120] mt-1 flex flex-wrap items-center gap-2">
               《{currentArticle.title}》
               {currentArticle.isGaoKao72 && (
                 <span className="text-xs font-sans font-normal px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                   高考 72 篇
+                </span>
+              )}
+              {currentArticle.recitationScope && currentArticle.recitationScope !== "FULL_TEXT" && (
+                <span className="text-xs font-sans font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-[#2B5C8F] border border-blue-300">
+                  必背范围：{currentArticle.recitationScope}
                 </span>
               )}
             </h1>

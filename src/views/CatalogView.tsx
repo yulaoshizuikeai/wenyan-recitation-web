@@ -127,11 +127,18 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
                 <span className="text-[11px] text-[#8C8884]">
                   〔{article.dynasty}〕{article.author} · {article.genre}
                 </span>
-                {article.isGaoKao72 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
-                    高考72篇
-                  </span>
-                )}
+                <div className="flex items-center gap-1">
+                  {article.recitationScope && article.recitationScope !== "FULL_TEXT" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-[#2B5C8F] font-bold border border-blue-200">
+                      {article.recitationScope}
+                    </span>
+                  )}
+                  {article.isGaoKao72 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                      高考72篇
+                    </span>
+                  )}
+                </div>
               </div>
 
               <h3 className="text-lg font-serif font-bold text-[#232120] mb-2">
