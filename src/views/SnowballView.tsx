@@ -6,6 +6,7 @@ import { fireConfetti } from "../components/Confetti";
 import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
 import { Rating } from "../domain/fsrs/fsrsTypes";
 import { getCardState, saveCardStatesBatch, recordReviewLog, getBottlenecks, saveBottlenecks } from "../storage/db";
+import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import {
   filterArticlesByScope,
   DYNASTY_GROUPS,
@@ -30,9 +31,10 @@ import {
 interface SnowballViewProps {
   initialArticleId?: string;
   selectedScope: string;
+  resumeExtra?: SessionExtra;
 }
 
-export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, selectedScope }) => {
+export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, selectedScope, resumeExtra }) => {
   const filteredArticles = useMemo(() => {
     return filterArticlesByScope(ALL_ARTICLES, selectedScope);
   }, [selectedScope]);
@@ -41,6 +43,13 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
     if (initialArticleId) return initialArticleId;
     return filteredArticles[0]?.id || "art_bx1_12"; // 劝学
   });
+
+  // Keep selectedArticleId in sync when initialArticleId prop changes
+  useEffect(() => {
+    if (initialArticleId) {
+      setSelectedArticleId(initialArticleId);
+    }
+  }, [initialArticleId]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDynastyFilter, setSelectedDynastyFilter] = useState<DynastyEra>("ALL");
@@ -75,17 +84,44 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       setBottleneckIndices(new Set(indices));
     });
 
-    const savedStr = localStorage.getItem(`snowball_stage_${currentArticle.id}`);
-    const savedIdx = savedStr ? parseInt(savedStr, 10) : 0;
-    if (savedIdx > 0 && savedIdx < stages.length) {
-      setCurrentStageIndex(savedIdx);
+    // Check resumeExtra first if provided
+    let targetIdx = 0;
+    if (resumeExtra?.stageIndex !== undefined && resumeExtra.stageIndex < stages.length) {
+      targetIdx = resumeExtra.stageIndex;
+    } else {
+      const savedStr = localStorage.getItem(`snowball_stage_${currentArticle.id}`);
+      targetIdx = savedStr ? parseInt(savedStr, 10) : 0;
+    }
+
+    if (targetIdx > 0 && targetIdx < stages.length) {
+      setCurrentStageIndex(targetIdx);
       setHasRestoredProgress(true);
     } else {
       setCurrentStageIndex(0);
       setHasRestoredProgress(false);
     }
     setRevealedUnitIndices(new Set());
-  }, [currentArticle.id, stages.length]);
+  }, [currentArticle.id, stages.length, resumeExtra]);
+
+  // Synchronize session tracker whenever article or stage changes
+  useEffect(() => {
+    if (!currentArticle || stages.length === 0) return;
+    saveLastSession({
+      view: "snowball",
+      articleId: currentArticle.id,
+      articleTitle: currentArticle.title,
+      articleAuthor: currentArticle.author,
+      articleDynasty: currentArticle.dynasty,
+      modeName: "长卷滚雪球",
+      progressText: `第 ${currentStageIndex + 1} / ${stages.length} 联`,
+      progressPercent: Math.min(100, Math.round(((currentStageIndex + 1) / Math.max(1, stages.length)) * 100)),
+      updatedAt: Date.now(),
+      extra: {
+        stageIndex: currentStageIndex,
+        totalStages: stages.length
+      }
+    });
+  }, [currentArticle, currentStageIndex, stages.length]);
 
   const currentStage = stages[currentStageIndex];
   const isCompleted = currentStageIndex >= stages.length - 1;
@@ -94,6 +130,23 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
     setCurrentStageIndex(0);
     setHasRestoredProgress(false);
     localStorage.removeItem(`snowball_stage_${currentArticle.id}`);
+    if (currentArticle && stages.length > 0) {
+      saveLastSession({
+        view: "snowball",
+        articleId: currentArticle.id,
+        articleTitle: currentArticle.title,
+        articleAuthor: currentArticle.author,
+        articleDynasty: currentArticle.dynasty,
+        modeName: "长卷滚雪球",
+        progressText: `第 1 / ${stages.length} 联`,
+        progressPercent: Math.min(100, Math.round((1 / Math.max(1, stages.length)) * 100)),
+        updatedAt: Date.now(),
+        extra: {
+          stageIndex: 0,
+          totalStages: stages.length
+        }
+      });
+    }
   };
 
   const toggleBottleneck = (index: number) => {
@@ -276,17 +329,26 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         <div className="space-y-4">
           {/* Progress Restore Toast */}
           {hasRestoredProgress && (
-            <div className="bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+            <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-                <span>已恢复背诵进度至<strong>第 {currentStageIndex + 1} 联</strong></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span>已接续背诵进度至<strong>第 {currentStageIndex + 1} 联</strong>（共 {stages.length} 联）</span>
               </div>
-              <button
-                onClick={handleResetToFirstStage}
-                className="text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 underline underline-offset-2"
-              >
-                从头开始
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleResetToFirstStage}
+                  className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>从头开始</span>
+                </button>
+                <button
+                  onClick={() => setHasRestoredProgress(false)}
+                  className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
 

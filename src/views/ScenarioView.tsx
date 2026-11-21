@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scenarioData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
+import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import {
   HelpCircle,
   Check,
@@ -19,8 +20,29 @@ interface DiffChar {
   status: "correct" | "wrong" | "missing";
 }
 
-export const ScenarioView: React.FC = () => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+interface ScenarioViewProps {
+  resumeExtra?: SessionExtra;
+}
+
+export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex > 0) {
+      return resumeExtra.scenarioQuestionIndex;
+    }
+    return 0;
+  });
+
+  const [hasRestoredNotice, setHasRestoredNotice] = useState(() => {
+    return resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex > 0;
+  });
+
+  useEffect(() => {
+    if (resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex >= 0) {
+      setCurrentIndex(resumeExtra.scenarioQuestionIndex);
+      setHasRestoredNotice(resumeExtra.scenarioQuestionIndex > 0);
+    }
+  }, [resumeExtra]);
+
   const [userInput, setUserInput] = useState("");
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
   const [isEvaluated, setIsEvaluated] = useState(false);
@@ -28,6 +50,26 @@ export const ScenarioView: React.FC = () => {
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
 
   const currentQ: GaoKaoScenarioQuestion = GAOKAO_SCENARIO_QUESTIONS[currentIndex] || GAOKAO_SCENARIO_QUESTIONS[0];
+
+  // Synchronize session tracker
+  useEffect(() => {
+    if (!currentQ) return;
+    saveLastSession({
+      view: "scenario",
+      articleId: undefined,
+      articleTitle: currentQ.articleTitle,
+      articleAuthor: currentQ.author,
+      articleDynasty: "",
+      modeName: "高考默写",
+      progressText: `第 ${currentIndex + 1} / ${GAOKAO_SCENARIO_QUESTIONS.length} 题`,
+      progressPercent: Math.min(100, Math.round(((currentIndex + 1) / GAOKAO_SCENARIO_QUESTIONS.length) * 100)),
+      updatedAt: Date.now(),
+      extra: {
+        scenarioQuestionIndex: currentIndex,
+        totalCards: GAOKAO_SCENARIO_QUESTIONS.length
+      }
+    });
+  }, [currentIndex, currentQ]);
 
   // Character-by-character diff engine
   const diffResult = useMemo<DiffChar[]>(() => {
@@ -119,6 +161,37 @@ export const ScenarioView: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Progress Restored Toast */}
+      {hasRestoredNotice && currentIndex > 0 && (
+        <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>已接续高考默写进度至<strong>第 {currentIndex + 1} 题</strong>（共 {GAOKAO_SCENARIO_QUESTIONS.length} 题）</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setCurrentIndex(0);
+                setUserInput("");
+                setIsAnswerRevealed(false);
+                setIsEvaluated(false);
+                setHasRestoredNotice(false);
+              }}
+              className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>从第 1 题开始</span>
+            </button>
+            <button
+              onClick={() => setHasRestoredNotice(false)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Question Card */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5 transition-colors">

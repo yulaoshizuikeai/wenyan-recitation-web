@@ -15,12 +15,14 @@ import {
   Moon,
   Check,
   Search,
-  Flame
+  Flame,
+  RotateCcw
 } from "lucide-react";
 import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
+import { LastSessionState, NavView } from "../storage/sessionTracker";
 
-export type NavView = "dashboard" | "cram" | "snowball" | "flipcard" | "cloze" | "scenario" | "catalog" | "settings";
+export type { NavView };
 
 interface NavbarProps {
   currentView: NavView;
@@ -31,6 +33,8 @@ interface NavbarProps {
   onToggleSound: () => void;
   theme: AppTheme;
   onThemeChange: (theme: AppTheme) => void;
+  lastSession?: LastSessionState | null;
+  onResumeSession?: (session: LastSessionState) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -41,7 +45,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   soundEnabled,
   onToggleSound,
   theme,
-  onThemeChange
+  onThemeChange,
+  lastSession,
+  onResumeSession
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
@@ -147,6 +153,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Right Controls: Scope, Theme, Sound, Menu */}
             <div className="flex items-center gap-2">
+              {/* Quick Resume Button in Desktop Bar */}
+              {lastSession && currentView !== lastSession.view && (
+                <button
+                  onClick={() => onResumeSession && onResumeSession(lastSession)}
+                  className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200/80 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100/80 dark:hover:bg-red-900/40 text-xs font-medium text-red-700 dark:text-red-400 transition-colors shadow-2xs"
+                  title={`继续上次研习：${lastSession.articleTitle ? `《${lastSession.articleTitle}》` : lastSession.modeName}`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                  <span className="truncate max-w-[120px]">
+                    接续《{lastSession.articleTitle || lastSession.modeName}》
+                  </span>
+                </button>
+              )}
+
               {/* Hierarchical Scope Selector Trigger */}
               <button
                 onClick={() => setIsScopeModalOpen(true)}

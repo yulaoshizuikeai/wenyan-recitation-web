@@ -128,10 +128,15 @@ export async function saveBottlenecks(articleId: string, indices: number[]): Pro
 
 export async function resetAllProgress(): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(["cards", "logs", "daily_records", "bottlenecks"], "readwrite");
+  const tx = db.transaction(["cards", "logs", "daily_records", "bottlenecks", "settings"], "readwrite");
   await tx.objectStore("cards").clear();
   await tx.objectStore("logs").clear();
   await tx.objectStore("daily_records").clear();
   await tx.objectStore("bottlenecks").clear();
+  await tx.objectStore("settings").clear();
   await tx.done;
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    localStorage.removeItem("wenyan_last_session");
+  }
 }

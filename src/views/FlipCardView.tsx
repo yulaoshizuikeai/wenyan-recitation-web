@@ -6,6 +6,7 @@ import { filterArticlesByScope } from "../data/articleTaxonomy";
 import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
 import { CardFsrsState, Rating, CardState } from "../domain/fsrs/fsrsTypes";
 import { getCardState, saveCardState, recordReviewLog, getAllCardStates } from "../storage/db";
+import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import {
@@ -16,7 +17,9 @@ import {
   Trophy,
   Clock,
   Zap,
-  Shuffle
+  Shuffle,
+  RotateCcw,
+  X
 } from "lucide-react";
 
 type QueueMode = "due" | "new" | "article" | "random";
@@ -24,9 +27,10 @@ type QueueMode = "due" | "new" | "article" | "random";
 interface FlipCardViewProps {
   initialArticleId?: string;
   selectedScope: string;
+  resumeExtra?: SessionExtra;
 }
 
-export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, selectedScope }) => {
+export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, selectedScope, resumeExtra }) => {
   const fsrs = useMemo(() => new FSRSEngine(), []);
 
   // Filter articles based on selected scope
@@ -39,10 +43,23 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     return flashcardCache.getCardsForArticles(targetArticles);
   }, [targetArticles]);
 
-  const [queueMode, setQueueMode] = useState<QueueMode>("due");
+  const [queueMode, setQueueMode] = useState<QueueMode>(() => {
+    if (resumeExtra?.queueMode && ["due", "new", "article", "random"].includes(resumeExtra.queueMode)) {
+      return resumeExtra.queueMode as QueueMode;
+    }
+    return "due";
+  });
+
   const [selectedArticleId, setSelectedArticleId] = useState<string>(() => {
     return initialArticleId || targetArticles[0]?.id || "art_bx1_12";
   });
+
+  // Sync initialArticleId if passed
+  useEffect(() => {
+    if (initialArticleId) {
+      setSelectedArticleId(initialArticleId);
+    }
+  }, [initialArticleId]);
 
   const [cardStatesMap, setCardStatesMap] = useState<Map<string, CardFsrsState>>(new Map());
   const [isLoadingStates, setIsLoadingStates] = useState(true);
@@ -103,7 +120,27 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     return [];
   }, [queueMode, dueCardsAll, newCardsAll, selectedArticleId, allCards]);
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0) {
+      return resumeExtra.cardIndex;
+    }
+    return 0;
+  });
+
+  const [hasRestoredNotice, setHasRestoredNotice] = useState(() => {
+    return resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0;
+  });
+
+  useEffect(() => {
+    if (resumeExtra?.queueMode && ["due", "new", "article", "random"].includes(resumeExtra.queueMode)) {
+      setQueueMode(resumeExtra.queueMode as QueueMode);
+    }
+    if (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex >= 0) {
+      setCurrentIndex(resumeExtra.cardIndex);
+      setHasRestoredNotice(resumeExtra.cardIndex > 0);
+    }
+  }, [resumeExtra]);
+
   const [isFlipped, setIsFlipped] = useState(false);
   const [currentCardState, setCurrentCardState] = useState<CardFsrsState | null>(null);
   const [completedCount, setCompletedCount] = useState(0);
@@ -117,7 +154,36 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     setIsFlipped(false);
     setCompletedCount(0);
     setSessionFinished(false);
+    setHasRestoredNotice(false);
   };
+
+  // Synchronize session tracker
+  useEffect(() => {
+    if (sessionCards.length === 0 || !currentFlashcard) return;
+    const cardArticle = ALL_ARTICLES.find(a => a.id === currentFlashcard.articleId) || ALL_ARTICLES.find(a => a.id === selectedArticleId);
+    const modeLabels: Record<QueueMode, string> = {
+      due: "遗忘复习",
+      new: "新学启程",
+      article: "单篇专攻",
+      random: "乱序抽背"
+    };
+    saveLastSession({
+      view: "flipcard",
+      articleId: queueMode === "article" ? selectedArticleId : currentFlashcard.articleId,
+      articleTitle: cardArticle?.title || currentFlashcard.frontTitle.replace(/[《》]/g, ""),
+      articleAuthor: cardArticle?.author,
+      articleDynasty: cardArticle?.dynasty,
+      modeName: "翻转闪卡",
+      progressText: `${modeLabels[queueMode]} · 卡片 ${currentIndex + 1} / ${sessionCards.length}`,
+      progressPercent: Math.min(100, Math.round(((currentIndex + 1) / Math.max(1, sessionCards.length)) * 100)),
+      updatedAt: Date.now(),
+      extra: {
+        queueMode,
+        cardIndex: currentIndex,
+        totalCards: sessionCards.length
+      }
+    });
+  }, [currentIndex, queueMode, selectedArticleId, currentFlashcard, sessionCards.length]);
 
   // Load state for current flashcard instantly from cache or DB
   useEffect(() => {
@@ -149,25 +215,24 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
 
   // O(1) in-memory rating evaluation with async DB persistence
   const handleRate = async (rating: Rating) => {
-    if (!currentCardState || !currentFlashcard) return;
+    if (!currentFlashcard || !currentCardState) return;
 
-    if (rating === Rating.AGAIN) sound.playWrong();
-    else if (rating === Rating.HARD) sound.playHard();
-    else if (rating === Rating.GOOD) sound.playCorrect();
-    else sound.playEasy();
+    if (rating === Rating.AGAIN) {
+      sound.playWrong();
+    } else {
+      sound.playCorrect();
+    }
 
     const result = fsrs.evaluateReview(currentCardState, rating);
 
-    // Instant O(1) state update
-    setCardStatesMap(prev => {
-      const next = new Map(prev);
-      next.set(result.updatedCard.cardId, result.updatedCard);
-      return next;
-    });
+    // Instant local memory update (zero-lag UI)
+    const nextMap = new Map(cardStatesMap);
+    nextMap.set(currentFlashcard.id, result.updatedCard);
+    setCardStatesMap(nextMap);
 
-    // Fire and forget DB persistence
-    saveCardState(result.updatedCard);
-    recordReviewLog(result.reviewLog);
+    // Asynchronous non-blocking persistence
+    saveCardState(result.updatedCard).catch(() => {});
+    recordReviewLog(result.reviewLog).catch(() => {});
 
     setCompletedCount(prev => prev + 1);
 
@@ -181,13 +246,12 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
     }
   };
 
-  // Keyboard shortcut listener
+  // Keyboard shortcut listener for space (flip) and 1-4 (ratings)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (sessionFinished) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      if (e.code === "Space" || e.code === "Enter") {
+      if (e.code === "Space") {
         e.preventDefault();
         handleFlip();
       } else if (isFlipped) {
@@ -197,22 +261,15 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
         else if (e.key === "4") handleRate(Rating.EASY);
       }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFlipped, currentCardState, sessionFinished, sessionCards.length, currentIndex]);
-
-  if (isLoadingStates) {
-    return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center text-zinc-400 text-xs">
-        载入 FSRS 记忆档案中...
-      </div>
-    );
-  }
+  }, [isFlipped, currentFlashcard, currentCardState]);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-5 pb-24">
-      {/* Mode Switcher Tabs */}
-      <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mb-5 text-xs font-medium">
+      {/* 4 Mode Switching Tabs */}
+      <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mb-4 text-xs font-medium">
         <button
           onClick={() => handleSwitchMode("due")}
           className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors ${
@@ -226,7 +283,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
           <span
             className={`font-mono text-[10px] px-1 rounded ${
               dueCardsAll.length > 0
-                ? "bg-red-500 text-white"
+                ? "bg-red-500 text-white font-bold"
                 : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300"
             }`}
           >
@@ -285,6 +342,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
               setIsFlipped(false);
               setCompletedCount(0);
               setSessionFinished(false);
+              setHasRestoredNotice(false);
             }}
             className="w-full text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-zinc-800 dark:text-zinc-200 focus:outline-hidden focus:border-zinc-400"
           >
@@ -294,6 +352,35 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({ initialArticleId, se
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {/* Progress Restored Toast */}
+      {hasRestoredNotice && currentIndex > 0 && sessionCards.length > 0 && (
+        <div className="mb-4 bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>已接续闪卡进度至<strong>第 {currentIndex + 1} 张</strong>（共 {sessionCards.length} 张）</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setCurrentIndex(0);
+                setIsFlipped(false);
+                setHasRestoredNotice(false);
+              }}
+              className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>从第 1 张开始</span>
+            </button>
+            <button
+              onClick={() => setHasRestoredNotice(false)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 

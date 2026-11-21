@@ -26,21 +26,28 @@ import {
   HelpCircle,
   BookmarkCheck,
   XCircle,
-  Clock
+  Clock,
+  X
 } from "lucide-react";
+import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 
 export type CramRating = "stuck" | "doubt" | "mastered";
 
 interface CramModeViewProps {
   onOpenArticleInView?: (articleId: string, view: any) => void;
+  resumeExtra?: SessionExtra;
 }
 
 const STORAGE_KEY_RATINGS = "wenyan_cram_ratings";
 
-export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView }) => {
-  const [activeModule, setActiveModule] = useState<string>("ALL");
+export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView, resumeExtra }) => {
+  const [activeModule, setActiveModule] = useState<string>(() => {
+    return resumeExtra?.activeModule || "ALL";
+  });
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [viewStyle, setViewStyle] = useState<"card" | "list">("card");
+  const [viewStyle, setViewStyle] = useState<"card" | "list">(() => {
+    return resumeExtra?.viewStyle || "card";
+  });
   const [onlyWeak, setOnlyWeak] = useState<boolean>(false);
   const [ratings, setRatings] = useState<Record<string, CramRating>>(() => {
     try {
@@ -52,7 +59,29 @@ export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView 
   });
 
   // Card view specific state
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [currentIndex, setCurrentIndex] = useState<number>(() => {
+    if (resumeExtra?.goldenVerseIndex !== undefined && resumeExtra.goldenVerseIndex > 0) {
+      return resumeExtra.goldenVerseIndex;
+    }
+    return 0;
+  });
+  const [hasRestoredNotice, setHasRestoredNotice] = useState<boolean>(() => {
+    return resumeExtra?.goldenVerseIndex !== undefined && resumeExtra.goldenVerseIndex > 0;
+  });
+
+  useEffect(() => {
+    if (resumeExtra?.goldenVerseIndex !== undefined && resumeExtra.goldenVerseIndex >= 0) {
+      setCurrentIndex(resumeExtra.goldenVerseIndex);
+      setHasRestoredNotice(resumeExtra.goldenVerseIndex > 0);
+    }
+    if (resumeExtra?.activeModule) {
+      setActiveModule(resumeExtra.activeModule);
+    }
+    if (resumeExtra?.viewStyle) {
+      setViewStyle(resumeExtra.viewStyle);
+    }
+  }, [resumeExtra]);
+
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
   const [isShuffled, setIsShuffled] = useState<boolean>(false);
   const [shuffledSeed, setShuffledSeed] = useState<number>(0);
@@ -99,6 +128,28 @@ export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView 
   }, [filteredVerses.length, currentIndex]);
 
   const currentVerse = filteredVerses[currentIndex] || null;
+
+  // Synchronize session tracker
+  useEffect(() => {
+    if (filteredVerses.length === 0 || !currentVerse) return;
+    saveLastSession({
+      view: "cram",
+      articleId: currentVerse.articleId,
+      articleTitle: currentVerse.articleTitle || "考前核心金句",
+      articleAuthor: currentVerse.author,
+      articleDynasty: currentVerse.dynasty,
+      modeName: "考前抱佛脚",
+      progressText: `金句 ${currentIndex + 1} / ${filteredVerses.length}`,
+      progressPercent: Math.min(100, Math.round(((currentIndex + 1) / Math.max(1, filteredVerses.length)) * 100)),
+      updatedAt: Date.now(),
+      extra: {
+        goldenVerseIndex: currentIndex,
+        activeModule,
+        viewStyle,
+        totalCards: filteredVerses.length
+      }
+    });
+  }, [currentIndex, activeModule, viewStyle, filteredVerses, currentVerse]);
 
   // Persist ratings to localStorage
   const handleRate = useCallback((verseId: string, rating: CramRating) => {
@@ -385,6 +436,35 @@ export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView 
           </div>
         </div>
       </div>
+
+      {/* Progress Restored Toast */}
+      {hasRestoredNotice && currentIndex > 0 && filteredVerses.length > 0 && (
+        <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>已接续抱佛脚进度至<strong>第 {currentIndex + 1} 句</strong>（共 {filteredVerses.length} 句）</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setCurrentIndex(0);
+                setIsFlipped(false);
+                setHasRestoredNotice(false);
+              }}
+              className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>从第 1 句开始</span>
+            </button>
+            <button
+              onClick={() => setHasRestoredNotice(false)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content: Card View vs List View */}
       {filteredVerses.length === 0 ? (

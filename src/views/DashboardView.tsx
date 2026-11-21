@@ -4,6 +4,8 @@ import { Heatmap } from "../components/Heatmap";
 import { getAllCardStates, getDailyRecords } from "../storage/db";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
 import { NavView } from "../components/Navbar";
+import { useLastSession, LastSessionState } from "../storage/sessionTracker";
+import { PickUpCard } from "../components/PickUpCard";
 import {
   Layers,
   Sparkles,
@@ -13,22 +15,60 @@ import {
   Clock,
   CheckCircle,
   BarChart,
-  ArrowUpRight
+  ArrowUpRight,
+  RotateCcw
 } from "lucide-react";
 
 interface DashboardViewProps {
   onNavigate: (view: NavView) => void;
   onOpenArticleInView: (articleId: string, view: NavView) => void;
+  onResumeSession?: (session: LastSessionState) => void;
   selectedScope: string;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onOpenArticleInView,
+  onResumeSession,
   selectedScope
 }) => {
   const [cardStates, setCardStates] = useState<CardFsrsState[]>([]);
   const [dailyRecords, setDailyRecords] = useState<{ date: string; count: number }[]>([]);
+  const { lastSession, clearSession } = useLastSession();
+
+  const handleResume = (session: LastSessionState) => {
+    if (onResumeSession) {
+      onResumeSession(session);
+    } else {
+      if (session.articleId) {
+        onOpenArticleInView(session.articleId, session.view);
+      } else {
+        onNavigate(session.view);
+      }
+    }
+  };
+
+  const handleRestart = (session: LastSessionState) => {
+    if (session.articleId) {
+      localStorage.removeItem(`snowball_stage_${session.articleId}`);
+    }
+    handleResume({
+      ...session,
+      progressText: session.view === "snowball" ? "第 1 联攻坚" : "从头开始",
+      progressPercent: 0,
+      extra: {
+        ...session.extra,
+        stageIndex: 0,
+        cardIndex: 0,
+        goldenVerseIndex: 0,
+        scenarioQuestionIndex: 0
+      }
+    });
+  };
+
+  const handleDismiss = () => {
+    clearSession();
+  };
 
   useEffect(() => {
     getAllCardStates().then(setCardStates);
@@ -118,11 +158,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
 
           <div className="pt-3 flex flex-wrap gap-2.5">
+            {lastSession && (
+              <button
+                onClick={() => handleResume(lastSession)}
+                className="py-2 px-4 rounded-xl bg-red-600 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-red-700 active:scale-[0.98] shadow-2xs"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>接续《{lastSession.articleTitle || lastSession.modeName}》({lastSession.progressPercent}%)</span>
+              </button>
+            )}
+
             <button
               onClick={() => onNavigate("cram")}
-              className="py-2 px-4 rounded-xl bg-red-600 text-white text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all hover:bg-red-700 active:scale-[0.98] shadow-2xs"
+              className={`py-2 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-all active:scale-[0.98] shadow-2xs ${
+                lastSession
+                  ? "border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                  : "bg-red-600 text-white hover:bg-red-700"
+              }`}
             >
-              <Flame className="w-4 h-4" />
+              <Flame className="w-4 h-4 text-red-500" />
               <span>考前抱佛脚 · 核心金句</span>
             </button>
 
@@ -149,6 +203,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Prominent "Pick up where I left off" Resume Station */}
+      {lastSession && (
+        <PickUpCard
+          variant="hero"
+          session={lastSession}
+          onResume={handleResume}
+          onRestart={handleRestart}
+          onDismiss={handleDismiss}
+        />
+      )}
 
       {/* Top 4 Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

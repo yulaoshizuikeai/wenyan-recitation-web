@@ -1,25 +1,52 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import { ClozeEngine, ClozeToken } from "../domain/cloze/clozeEngine";
 import { sound } from "../sound/audioSynthesizer";
 import { filterArticlesByScope, DYNASTY_GROUPS, DynastyEra } from "../data/articleTaxonomy";
-import { Eye, EyeOff, Search, X, RotateCcw, Type } from "lucide-react";
+import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
+import { Eye, EyeOff, Search, X, RotateCcw } from "lucide-react";
 
 interface ClozeViewProps {
   initialArticleId?: string;
   selectedScope: string;
+  resumeExtra?: SessionExtra;
 }
 
-export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selectedScope }) => {
+export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selectedScope, resumeExtra }) => {
   const filteredArticles = useMemo(() => {
     return filterArticlesByScope(ALL_ARTICLES, selectedScope);
   }, [selectedScope]);
 
   const [selectedArticleId, setSelectedArticleId] = useState<string>(() => {
-    return initialArticleId || filteredArticles[0]?.id || "art_bx1_12"; // 劝学
+    if (initialArticleId) return initialArticleId;
+    return filteredArticles[0]?.id || "art_bx1_12"; // 劝学
   });
 
-  const [level, setLevel] = useState<number>(1);
+  // Keep selectedArticleId in sync when initialArticleId prop changes
+  useEffect(() => {
+    if (initialArticleId) {
+      setSelectedArticleId(initialArticleId);
+    }
+  }, [initialArticleId]);
+
+  const [level, setLevel] = useState<number>(() => {
+    if (resumeExtra?.clozeLevel !== undefined && resumeExtra.clozeLevel >= 0 && resumeExtra.clozeLevel <= 4) {
+      return resumeExtra.clozeLevel;
+    }
+    return 1;
+  });
+
+  const [hasRestoredNotice, setHasRestoredNotice] = useState<boolean>(() => {
+    return resumeExtra?.clozeLevel !== undefined && resumeExtra.clozeLevel > 0;
+  });
+
+  useEffect(() => {
+    if (resumeExtra?.clozeLevel !== undefined && resumeExtra.clozeLevel >= 0 && resumeExtra.clozeLevel <= 4) {
+      setLevel(resumeExtra.clozeLevel);
+      setHasRestoredNotice(resumeExtra.clozeLevel > 0);
+    }
+  }, [resumeExtra]);
+
   const [fontSizeIndex, setFontSizeIndex] = useState<number>(1); // 0: 16px, 1: 18px, 2: 20px, 3: 22px
   const [revealAll, setRevealAll] = useState<boolean>(false);
   const [revealedTokenIds, setRevealedTokenIds] = useState<Set<number>>(new Set());
@@ -90,6 +117,25 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
     { lvl: 4, name: "L4 全盲", desc: "全篇下划线盲测" }
   ];
 
+  // Sync to session tracker
+  useEffect(() => {
+    if (!currentArticle) return;
+    saveLastSession({
+      view: "cloze",
+      articleId: currentArticle.id,
+      articleTitle: currentArticle.title,
+      articleAuthor: currentArticle.author,
+      articleDynasty: currentArticle.dynasty,
+      modeName: "渐进遮挡",
+      progressText: `${levelsConfig[level].name} (${revealedTokenIds.size} 词已显)`,
+      progressPercent: Math.min(100, Math.round(((level + 1) / 5) * 100)),
+      updatedAt: Date.now(),
+      extra: {
+        clozeLevel: level
+      }
+    });
+  }, [currentArticle, level, revealedTokenIds.size]);
+
   const handleToggleToken = (tokenId: number) => {
     sound.playReveal();
     const next = new Set(revealedTokenIds);
@@ -105,6 +151,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
     setLevel(lvl);
     setRevealedTokenIds(new Set());
     setRevealAll(false);
+    setHasRestoredNotice(false);
   };
 
   const searchedArticles = useMemo(() => {
@@ -208,6 +255,31 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
           ))}
         </div>
       </div>
+
+      {/* Progress Restored Toast */}
+      {hasRestoredNotice && (
+        <div className="mb-4 bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>已恢复至上次遮挡梯度：<strong>{levelsConfig[level].name}</strong></span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => handleLevelChange(1)}
+              className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>还原 L1</span>
+            </button>
+            <button
+              onClick={() => setHasRestoredNotice(false)}
+              className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Recitation Reading Canvas */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-10 shadow-xs space-y-5 transition-colors">

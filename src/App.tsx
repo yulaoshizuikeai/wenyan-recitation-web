@@ -11,11 +11,14 @@ import { SettingsView } from "./views/SettingsView";
 import { sound } from "./sound/audioSynthesizer";
 import { getSetting, setSetting } from "./storage/db";
 import { getStoredTheme, applyTheme, AppTheme } from "./utils/theme";
+import { useLastSession, LastSessionState, SessionExtra } from "./storage/sessionTracker";
 
 export function App() {
+  const { lastSession } = useLastSession();
   const [currentView, setCurrentView] = useState<NavView>("dashboard");
   const [selectedScope, setSelectedScope] = useState<string>("ALL");
-  const [activeArticleId, setActiveArticleId] = useState<string>("art_bx1_12"); // 劝学
+  const [activeArticleId, setActiveArticleId] = useState<string>(() => lastSession?.articleId || "art_bx1_12"); // 劝学
+  const [resumeExtra, setResumeExtra] = useState<SessionExtra | undefined>(undefined);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
 
@@ -25,6 +28,13 @@ export function App() {
     getSetting<boolean>("sound_enabled", false).then(val => {
       setSoundEnabled(val);
       sound.enabled = val;
+    });
+
+    // Check if auto resume on launch is enabled
+    getSetting<boolean>("auto_resume_on_startup", false).then(autoResume => {
+      if (autoResume && lastSession) {
+        handleResumeLastSession(lastSession);
+      }
     });
   }, [theme]);
 
@@ -42,7 +52,17 @@ export function App() {
 
   const handleOpenArticleInView = (articleId: string, view: NavView) => {
     setActiveArticleId(articleId);
+    setResumeExtra(undefined);
     setCurrentView(view);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleResumeLastSession = (session: LastSessionState) => {
+    if (session.articleId) {
+      setActiveArticleId(session.articleId);
+    }
+    setResumeExtra(session.extra);
+    setCurrentView(session.view);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -58,6 +78,8 @@ export function App() {
         onToggleSound={handleToggleSound}
         theme={theme}
         onThemeChange={setTheme}
+        lastSession={lastSession}
+        onResumeSession={handleResumeLastSession}
       />
 
       {/* Main Content Area (padding-bottom accounts for mobile bottom dock) */}
@@ -66,6 +88,7 @@ export function App() {
           <DashboardView
             onNavigate={setCurrentView}
             onOpenArticleInView={handleOpenArticleInView}
+            onResumeSession={handleResumeLastSession}
             selectedScope={selectedScope}
           />
         )}
@@ -73,6 +96,7 @@ export function App() {
         {currentView === "cram" && (
           <CramModeView
             onOpenArticleInView={handleOpenArticleInView}
+            resumeExtra={resumeExtra}
           />
         )}
 
@@ -80,6 +104,7 @@ export function App() {
           <SnowballView
             initialArticleId={activeArticleId}
             selectedScope={selectedScope}
+            resumeExtra={resumeExtra}
           />
         )}
 
@@ -87,6 +112,7 @@ export function App() {
           <FlipCardView
             initialArticleId={activeArticleId}
             selectedScope={selectedScope}
+            resumeExtra={resumeExtra}
           />
         )}
 
@@ -94,16 +120,20 @@ export function App() {
           <ClozeView
             initialArticleId={activeArticleId}
             selectedScope={selectedScope}
+            resumeExtra={resumeExtra}
           />
         )}
 
         {currentView === "scenario" && (
-          <ScenarioView />
+          <ScenarioView
+            resumeExtra={resumeExtra}
+          />
         )}
 
         {currentView === "catalog" && (
           <CatalogView
             onOpenArticleInView={handleOpenArticleInView}
+            onResumeSession={handleResumeLastSession}
             selectedScope={selectedScope}
           />
         )}

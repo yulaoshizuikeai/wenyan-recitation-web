@@ -17,18 +17,50 @@ import {
   ChevronDown
 } from "lucide-react";
 import { NavView } from "../components/Navbar";
+import { useLastSession, LastSessionState, saveLastSession } from "../storage/sessionTracker";
+import { PickUpCard } from "../components/PickUpCard";
 
 interface CatalogViewProps {
   onOpenArticleInView: (articleId: string, view: NavView) => void;
+  onResumeSession?: (session: LastSessionState) => void;
   selectedScope: string;
 }
 
-export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, selectedScope }) => {
+export const CatalogView: React.FC<CatalogViewProps> = ({
+  onOpenArticleInView,
+  onResumeSession,
+  selectedScope
+}) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
   const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
   const [readingArticle, setReadingArticle] = useState<Article | null>(null);
+
+  const { lastSession, clearSession } = useLastSession();
+
+  const handleResume = (session: LastSessionState) => {
+    if (onResumeSession) {
+      onResumeSession(session);
+    } else if (session.articleId) {
+      onOpenArticleInView(session.articleId, session.view);
+    }
+  };
+
+  const handleOpenReadingModal = (article: Article) => {
+    setReadingArticle(article);
+    saveLastSession({
+      view: "catalog",
+      articleId: article.id,
+      articleTitle: article.title,
+      articleAuthor: article.author,
+      articleDynasty: article.dynasty,
+      modeName: "诗文典库",
+      progressText: "全文研览",
+      progressPercent: 100,
+      updatedAt: Date.now()
+    });
+  };
 
   // Performance chunking: render 18 initially, load more on demand
   const [visibleCount, setVisibleCount] = useState<number>(18);
@@ -59,6 +91,18 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
+      {/* Pick Up Where You Left Off Quick Banner */}
+      {lastSession && (
+        <div className="mb-4">
+          <PickUpCard
+            variant="banner"
+            session={lastSession}
+            onResume={handleResume}
+            onDismiss={clearSession}
+          />
+        </div>
+      )}
+
       {/* Search & Multi-dimensional Filter Bar */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs space-y-4 transition-colors">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -222,7 +266,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
               </button>
 
               <button
-                onClick={() => setReadingArticle(article)}
+                onClick={() => handleOpenReadingModal(article)}
                 className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
               >
                 <BookOpen className="w-3.5 h-3.5" />

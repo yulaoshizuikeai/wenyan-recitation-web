@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { sound } from "../sound/audioSynthesizer";
-import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting } from "../storage/db";
+import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting, getSetting } from "../storage/db";
 import { AppTheme, toggleTheme } from "../utils/theme";
+import { useLastSession, formatRelativeTime } from "../storage/sessionTracker";
 import {
   Settings as SettingsIcon,
   Sliders,
@@ -11,7 +12,9 @@ import {
   AlertTriangle,
   Sun,
   Moon,
-  Volume2
+  Volume2,
+  History,
+  RotateCcw
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -26,6 +29,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
   const [dailyReviewLimit, setDailyReviewLimit] = useState<number>(100);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [autoResume, setAutoResume] = useState<boolean>(false);
+  const { lastSession, clearSession } = useLastSession();
+
+  useEffect(() => {
+    getSetting<boolean>("auto_resume_on_startup", false).then(setAutoResume);
+  }, []);
+
+  const handleToggleAutoResume = (val: boolean) => {
+    setAutoResume(val);
+    setSetting("auto_resume_on_startup", val);
+  };
 
   const handleSaveSettings = () => {
     setSetting("fsrs_retention", retention);
@@ -130,6 +144,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
             <Volume2 className="w-3.5 h-3.5" />
             <span>试听和弦</span>
           </button>
+        </div>
+      </div>
+
+      {/* Session & Pick Up Where I Left Off Preferences */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-4 transition-colors">
+        <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
+          <History className="w-3.5 h-3.5 text-zinc-500" />
+          <span>断点续学与进度记忆</span>
+        </h2>
+
+        <div className="flex items-center justify-between text-xs py-1">
+          <div>
+            <div className="font-medium text-zinc-900 dark:text-zinc-100">启动时直接恢复上次进度</div>
+            <div className="text-[11px] text-zinc-400">重新打开应用时直接跳过概览，恢复离开时的背诵模式</div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoResume}
+              onChange={e => handleToggleAutoResume(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-zinc-200 peer-focus:outline-hidden rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+          </label>
+        </div>
+
+        <div className="p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-between gap-3 text-xs">
+          <div className="min-w-0">
+            <div className="text-[11px] text-zinc-400">当前记录的最近进度</div>
+            {lastSession ? (
+              <div className="font-medium text-zinc-800 dark:text-zinc-200 truncate mt-0.5">
+                {lastSession.articleTitle ? `《${lastSession.articleTitle}》· ` : ""}{lastSession.modeName} ({lastSession.progressText})
+                <span className="text-[10px] text-zinc-400 ml-1.5 font-mono">
+                  {formatRelativeTime(lastSession.updatedAt)}
+                </span>
+              </div>
+            ) : (
+              <div className="text-zinc-400 mt-0.5">暂无断点记录</div>
+            )}
+          </div>
+
+          {lastSession && (
+            <button
+              onClick={() => clearSession()}
+              className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-[11px] text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors shrink-0"
+            >
+              清除记录
+            </button>
+          )}
         </div>
       </div>
 
