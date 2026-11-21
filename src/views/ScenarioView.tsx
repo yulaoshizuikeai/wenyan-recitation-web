@@ -15,7 +15,6 @@ export const ScenarioView: React.FC = () => {
   const currentQ: GaoKaoScenarioQuestion = GAOKAO_SCENARIO_QUESTIONS[currentIndex] || GAOKAO_SCENARIO_QUESTIONS[0];
 
   const handleVerify = () => {
-    sound.playClick();
     setIsEvaluated(true);
     setIsAnswerRevealed(true);
 
@@ -34,7 +33,6 @@ export const ScenarioView: React.FC = () => {
   };
 
   const handleNext = () => {
-    sound.playClick();
     if (currentIndex + 1 < GAOKAO_SCENARIO_QUESTIONS.length) {
       setCurrentIndex(prev => prev + 1);
     } else {

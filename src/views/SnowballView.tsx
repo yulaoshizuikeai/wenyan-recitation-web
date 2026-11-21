@@ -49,6 +49,7 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   const [maskHistory, setMaskHistory] = useState(true);
   const [bottleneckIndices, setBottleneckIndices] = useState<Set<number>>(new Set());
   const [revealedUnitIndices, setRevealedUnitIndices] = useState<Set<number>>(new Set());
+  const [hasRestoredProgress, setHasRestoredProgress] = useState(false);
   const [showSettlementModal, setShowSettlementModal] = useState(false);
   const [settlementStats, setSettlementStats] = useState<{
     totalUnits: number;
@@ -59,14 +60,23 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load existing bottlenecks for article
+  // Load existing bottlenecks & saved progress for article
   useEffect(() => {
     getBottlenecks(currentArticle.id).then(indices => {
       setBottleneckIndices(new Set(indices));
     });
-    setCurrentStageIndex(0);
+
+    const savedStr = localStorage.getItem(`snowball_stage_${currentArticle.id}`);
+    const savedIdx = savedStr ? parseInt(savedStr, 10) : 0;
+    if (savedIdx > 0 && savedIdx < stages.length) {
+      setCurrentStageIndex(savedIdx);
+      setHasRestoredProgress(true);
+    } else {
+      setCurrentStageIndex(0);
+      setHasRestoredProgress(false);
+    }
     setRevealedUnitIndices(new Set());
-  }, [currentArticle.id]);
+  }, [currentArticle.id, stages.length]);
 
   // Scroll to top on stage change
   useEffect(() => {
@@ -78,8 +88,13 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   const currentStage = stages[currentStageIndex];
   const isCompleted = currentStageIndex >= stages.length - 1;
 
+  const handleResetToFirstStage = () => {
+    setCurrentStageIndex(0);
+    setHasRestoredProgress(false);
+    localStorage.removeItem(`snowball_stage_${currentArticle.id}`);
+  };
+
   const toggleBottleneck = (index: number) => {
-    sound.playClick();
     const next = new Set(bottleneckIndices);
     if (next.has(index)) {
       next.delete(index);
@@ -95,6 +110,7 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       // Execute FSRS batch credit settlement
       sound.playCelebration();
       fireConfetti();
+      localStorage.removeItem(`snowball_stage_${currentArticle.id}`);
 
       const fsrs = new FSRSEngine();
       const updatedCards = [];
@@ -127,14 +143,17 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       setShowSettlementModal(true);
     } else {
       sound.playCorrect();
-      setCurrentStageIndex(prev => prev + 1);
+      const nextIdx = currentStageIndex + 1;
+      setCurrentStageIndex(nextIdx);
+      localStorage.setItem(`snowball_stage_${currentArticle.id}`, String(nextIdx));
     }
   };
 
   const handlePrevStage = () => {
-    sound.playClick();
     if (currentStageIndex > 0) {
-      setCurrentStageIndex(prev => prev - 1);
+      const prevIdx = currentStageIndex - 1;
+      setCurrentStageIndex(prevIdx);
+      localStorage.setItem(`snowball_stage_${currentArticle.id}`, String(prevIdx));
     }
   };
 
@@ -188,7 +207,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
 
           <button
             onClick={() => {
-              sound.playClick();
               setShowArticlePicker(true);
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] hover:bg-[#F0EDE1] text-xs font-bold text-[#232120] transition-colors"
@@ -223,6 +241,22 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       {/* Main Chaining Workspace */}
       {currentStage ? (
         <div className="space-y-5">
+          {/* Restored Progress Banner */}
+          {hasRestoredProgress && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between gap-3 text-xs text-amber-950 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2">
+                <span>📌</span>
+                <span>已自动恢复上次背诵进度至<strong>第 {currentStageIndex + 1} 联</strong>（共 {stages.length} 联）</span>
+              </div>
+              <button
+                onClick={handleResetToFirstStage}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-[11px] font-bold text-amber-900 transition-colors"
+              >
+                从第 1 联重新开始
+              </button>
+            </div>
+          )}
+
           {/* Rule Explanatory Banner */}
           <div className="bg-[#FAF7F0] border border-[#E3DEC3] rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-[#5C5855]">
             <div className="flex items-center gap-2">
@@ -233,7 +267,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
             </div>
             <button
               onClick={() => {
-                sound.playClick();
                 setMaskHistory(!maskHistory);
               }}
               className={`shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
@@ -441,7 +474,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  sound.playClick();
                   setCurrentStageIndex(0);
                   setShowSettlementModal(false);
                 }}
@@ -452,7 +484,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
               </button>
               <button
                 onClick={() => {
-                  sound.playClick();
                   setShowSettlementModal(false);
                 }}
                 className="flex-[1.5] py-3 rounded-xl bg-[#9E2A2B] hover:bg-[#7A1E1F] text-white text-xs sm:text-sm font-bold shadow-md"
@@ -483,7 +514,7 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
               placeholder="搜索篇目名或作者（如：劝学、赤壁赋、苏轼）"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5CFBD] bg-white text-sm text-[#232120] mb-4 focus:outline-none focus:border-[#9E2A2B]"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5CFBD] bg-white text-sm text-[#232120] mb-4 focus:outline-hidden focus:border-[#9E2A2B]"
             />
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -491,7 +522,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
                 <button
                   key={article.id}
                   onClick={() => {
-                    sound.playClick();
                     setSelectedArticleId(article.id);
                     setShowArticlePicker(false);
                     setSearchQuery("");

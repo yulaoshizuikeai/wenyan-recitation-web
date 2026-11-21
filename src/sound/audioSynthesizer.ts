@@ -1,6 +1,6 @@
 class AudioSynthesizer {
   private ctx: AudioContext | null = null;
-  public enabled = true;
+  public enabled = false;
 
   private initContext() {
     if (!this.ctx && typeof window !== "undefined") {
@@ -14,27 +14,9 @@ class AudioSynthesizer {
     }
   }
 
+  // Generic UI clicks are muted for a peaceful classical reading experience
   playClick() {
-    if (!this.enabled) return;
-    this.initContext();
-    if (!this.ctx) return;
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    const now = this.ctx.currentTime;
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(800, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.04);
-
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.start(now);
-    osc.stop(now + 0.05);
+    // Intentionally silent for standard UI buttons
   }
 
   playFlip() {
@@ -42,23 +24,23 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
-    // Simulate paper swish with filtered white noise / quick pitch drop
+    // Gentle page turn / paper flutter (soft low sine glide)
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(450, now);
-    osc.frequency.exponentialRampToValueAtTime(150, now + 0.08);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(160, now + 0.07);
 
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.09);
+    osc.stop(now + 0.08);
   }
 
   playCorrect() {
@@ -66,26 +48,26 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
-    // Ancient chime / bell double chime (E5 -> G#5)
+    // Pure, gentle guqin / bell harmonic chime (E5 -> G#5)
     const now = this.ctx.currentTime;
     const freqs = [659.25, 830.61];
 
     freqs.forEach((freq, idx) => {
       const osc = this.ctx!.createOscillator();
       const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.08;
+      const startTime = now + idx * 0.07;
 
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, startTime);
 
-      gain.gain.setValueAtTime(0.2, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+      gain.gain.setValueAtTime(0.1, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.28);
 
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
 
       osc.start(startTime);
-      osc.stop(startTime + 0.36);
+      osc.stop(startTime + 0.3);
     });
   }
 
@@ -94,26 +76,26 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
-    // Rising triad chime (C5 -> E5 -> G5 -> C6)
+    // Gentle ascending triad (C5 -> E5 -> G5 -> C6)
     const now = this.ctx.currentTime;
     const notes = [523.25, 659.25, 783.99, 1046.5];
 
     notes.forEach((freq, idx) => {
       const osc = this.ctx!.createOscillator();
       const gain = this.ctx!.createGain();
-      const startTime = now + idx * 0.06;
+      const startTime = now + idx * 0.05;
 
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, startTime);
 
-      gain.gain.setValueAtTime(0.18, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.4);
+      gain.gain.setValueAtTime(0.09, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
 
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
 
       osc.start(startTime);
-      osc.stop(startTime + 0.45);
+      osc.stop(startTime + 0.32);
     });
   }
 
@@ -122,22 +104,23 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
+    // Subtle wooden reflection tone
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc.type = "sine";
-    osc.frequency.setValueAtTime(320, now);
-    osc.frequency.exponentialRampToValueAtTime(240, now + 0.2);
+    osc.frequency.setValueAtTime(260, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.16);
 
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.26);
+    osc.stop(now + 0.2);
   }
 
   playWrong() {
@@ -145,22 +128,23 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
+    // Soft muted wooden block (muyyu) tap - never a harsh buzzer
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(180, now);
-    osc.frequency.exponentialRampToValueAtTime(110, now + 0.22);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(100, now + 0.12);
 
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.23);
+    osc.stop(now + 0.15);
   }
 
   playReveal() {
@@ -168,20 +152,21 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
+    // Very quiet gentle ping
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
     osc.type = "sine";
-    osc.frequency.setValueAtTime(1174.66, now); // D6
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.frequency.setValueAtTime(880, now); // A5
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.16);
+    osc.stop(now + 0.13);
   }
 
   playCelebration() {
@@ -189,7 +174,7 @@ class AudioSynthesizer {
     this.initContext();
     if (!this.ctx) return;
 
-    // Harmonious ancient temple chime crescendo (G4, C5, E5, G5, C6)
+    // Harmonious ancient temple chime (peaceful, not loud)
     const now = this.ctx.currentTime;
     const chord = [392.0, 523.25, 659.25, 783.99, 1046.5];
 
@@ -201,14 +186,14 @@ class AudioSynthesizer {
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, startTime);
 
-      gain.gain.setValueAtTime(0.22, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
+      gain.gain.setValueAtTime(0.1, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.8);
 
       osc.connect(gain);
       gain.connect(this.ctx!.destination);
 
       osc.start(startTime);
-      osc.stop(startTime + 1.25);
+      osc.stop(startTime + 0.85);
     });
   }
 }

@@ -12,7 +12,6 @@ export const SettingsView: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleSaveSettings = () => {
-    sound.playClick();
     setSetting("fsrs_retention", retention);
     setSetting("fsrs_factor", factor);
     setSetting("daily_new_limit", dailyNewLimit);
@@ -23,7 +22,6 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleExportData = async () => {
-    sound.playClick();
     const cards = await getAllCardStates();
     const records = await getDailyRecords();
     const exportObj = {
@@ -160,7 +158,6 @@ export const SettingsView: React.FC = () => {
 
           <button
             onClick={() => {
-              sound.playClick();
               setShowResetConfirm(true);
             }}
             className="py-2.5 px-4 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-xs font-bold text-red-600 flex items-center gap-1.5 transition-all"

@@ -102,7 +102,6 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
   };
 
   const handleLevelChange = (lvl: number) => {
-    sound.playClick();
     setLevel(lvl);
     setRevealedTokenIds(new Set());
     setRevealAll(false);
@@ -148,7 +147,6 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                sound.playClick();
                 setRevealAll(!revealAll);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
@@ -163,7 +161,6 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
 
             <button
               onClick={() => {
-                sound.playClick();
                 setShowArticlePicker(true);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#D5CFBD] bg-[#FAF7F0] hover:bg-[#F0EDE1] text-xs font-bold text-[#232120]"
@@ -273,7 +270,6 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
                 <button
                   key={article.id}
                   onClick={() => {
-                    sound.playClick();
                     setSelectedArticleId(article.id);
                     setShowArticlePicker(false);
                     setRevealedTokenIds(new Set());

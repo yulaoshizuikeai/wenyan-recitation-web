@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { sound } from "../sound/audioSynthesizer";
 import { Volume2, VolumeX, BookOpen, Layers, Sparkles, HelpCircle, Settings as SettingsIcon, Menu, X, Award, Eye } from "lucide-react";
 import { MODULES } from "../data/curriculumData";
 
@@ -46,7 +45,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const currentScopeLabel = scopeOptions.find(o => o.id === selectedScope)?.label || "自选教材范围";
 
   const handleNavClick = (view: NavView) => {
-    sound.playClick();
     onSelectView(view);
     setIsMobileMenuOpen(false);
   };
@@ -105,7 +103,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative">
               <button
                 onClick={() => {
-                  sound.playClick();
                   setIsScopeMenuOpen(!isScopeMenuOpen);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D5CFBD] bg-white/70 hover:bg-white text-xs font-semibold text-[#232120] shadow-2xs transition-all max-w-[140px] sm:max-w-[200px] truncate"
@@ -125,7 +122,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <button
                         key={opt.id}
                         onClick={() => {
-                          sound.playClick();
                           onSelectScope(opt.id);
                           setIsScopeMenuOpen(false);
                         }}
@@ -144,10 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Audio Toggle */}
             <button
-              onClick={() => {
-                onToggleSound();
-                if (!soundEnabled) sound.playClick();
-              }}
+              onClick={onToggleSound}
               title={soundEnabled ? "音效已开启（点击静音）" : "音效已静音（点击开启）"}
               className={`p-2 rounded-lg border transition-all ${
                 soundEnabled
@@ -161,7 +154,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Mobile Menu Button */}
             <button
               onClick={() => {
-                sound.playClick();
                 setIsMobileMenuOpen(!isMobileMenuOpen);
               }}
               className="lg:hidden p-2 rounded-lg border border-[#D5CFBD] bg-white/70 text-[#232120]"

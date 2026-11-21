@@ -14,11 +14,11 @@ export function App() {
   const [currentView, setCurrentView] = useState<NavView>("dashboard");
   const [selectedScope, setSelectedScope] = useState<string>("ALL");
   const [activeArticleId, setActiveArticleId] = useState<string>("art_bx1_12"); // 劝学
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     getSetting<string>("selected_scope", "ALL").then(setSelectedScope);
-    getSetting<boolean>("sound_enabled", true).then(val => {
+    getSetting<boolean>("sound_enabled", false).then(val => {
       setSoundEnabled(val);
       sound.enabled = val;
     });
@@ -71,7 +71,10 @@ export function App() {
         )}
 
         {currentView === "flipcard" && (
-          <FlipCardView selectedScope={selectedScope} />
+          <FlipCardView
+            initialArticleId={activeArticleId}
+            selectedScope={selectedScope}
+          />
         )}
 
         {currentView === "cloze" && (

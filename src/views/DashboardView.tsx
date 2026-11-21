@@ -3,7 +3,6 @@ import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import { Heatmap } from "../components/Heatmap";
 import { getAllCardStates, getDailyRecords } from "../storage/db";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
-import { sound } from "../sound/audioSynthesizer";
 import { NavView } from "../components/Navbar";
 import { Layers, Sparkles, HelpCircle, BookOpen, ChevronRight, Award, Zap } from "lucide-react";
 
@@ -111,7 +110,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="pt-4 flex flex-wrap gap-3">
             <button
               onClick={() => {
-                sound.playClick();
                 onNavigate("snowball");
               }}
               className="py-2.5 px-5 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition-all"
@@ -122,7 +120,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <button
               onClick={() => {
-                sound.playClick();
                 onNavigate("flipcard");
               }}
               className="py-2.5 px-4 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 border border-white/30 backdrop-blur transition-all"
@@ -208,7 +205,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <button
             onClick={() => {
-              sound.playClick();
               onNavigate("catalog");
             }}
             className="text-xs text-[#9E2A2B] hover:underline font-bold flex items-center gap-1"
@@ -242,7 +238,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center gap-2 pt-2 border-t border-[#F0EDE1]">
                 <button
                   onClick={() => {
-                    sound.playClick();
                     onOpenArticleInView(article.id, "snowball");
                   }}
                   className="flex-1 py-1.5 px-2 rounded-lg bg-[#2B5C8F] hover:bg-[#1E3F63] text-white text-xs font-bold flex items-center justify-center gap-1 shadow-2xs transition-all"
@@ -252,7 +247,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    sound.playClick();
                     onOpenArticleInView(article.id, "cloze");
                   }}
                   className="py-1.5 px-2.5 rounded-lg bg-white border border-[#D5CFBD] hover:bg-[#F0EDE1] text-xs font-semibold text-[#232120] transition-all"

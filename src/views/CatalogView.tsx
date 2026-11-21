@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
 import { ALL_ARTICLES, Article, MODULES } from "../data/curriculumData";
-import { sound } from "../sound/audioSynthesizer";
 import { Search, Layers, Eye, BookOpen, X, BookmarkCheck } from "lucide-react";
 import { NavView } from "../components/Navbar";
 
@@ -70,7 +69,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
         <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[#F0EDE1] text-xs">
           <button
             onClick={() => {
-              sound.playClick();
               setSelectedModuleFilter("ALL");
             }}
             className={`px-3 py-1.5 rounded-lg border font-semibold transition-all ${
@@ -84,7 +82,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
 
           <button
             onClick={() => {
-              sound.playClick();
               setSelectedModuleFilter("GAOKAO72");
             }}
             className={`px-3 py-1.5 rounded-lg border font-semibold transition-all ${
@@ -100,7 +97,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
             <button
               key={m.id}
               onClick={() => {
-                sound.playClick();
                 setSelectedModuleFilter(m.id);
               }}
               className={`px-2.5 py-1.5 rounded-lg border font-medium transition-all ${
@@ -153,7 +149,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
             <div className="flex items-center gap-1.5 pt-3 border-t border-[#F0EDE1] text-xs">
               <button
                 onClick={() => {
-                  sound.playClick();
                   onOpenArticleInView(article.id, "snowball");
                 }}
                 className="flex-1 py-1.5 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2B5C8F] font-bold border border-blue-200 flex items-center justify-center gap-1 transition-all"
@@ -164,7 +159,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
 
               <button
                 onClick={() => {
-                  sound.playClick();
                   onOpenArticleInView(article.id, "cloze");
                 }}
                 className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#2C4F3D] font-bold border border-emerald-200 flex items-center justify-center gap-1 transition-all"
@@ -175,7 +169,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ onOpenArticleInView, s
 
               <button
                 onClick={() => {
-                  sound.playClick();
                   setReadingArticle(article);
                 }}
                 className="py-1.5 px-2.5 rounded-lg bg-[#FAF7F0] hover:bg-[#F0EDE1] text-[#232120] font-semibold border border-[#D5CFBD] flex items-center gap-1 transition-all"
