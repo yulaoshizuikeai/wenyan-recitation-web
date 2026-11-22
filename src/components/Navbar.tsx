@@ -110,39 +110,37 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 transition-colors">
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-14">
+          <div className="flex items-center gap-3 h-12">
             {/* Brand Logo */}
             <div
-              className="flex items-center gap-2.5 cursor-pointer select-none"
+              className="flex items-center gap-2 cursor-pointer select-none shrink-0"
               onClick={() => handleNavClick("dashboard")}
             >
-              <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm">
+              <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0">
                 诵
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-base text-zinc-900 dark:text-zinc-100 tracking-tight">
-                  文言背诵
-                </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
-                  FSRS-5
-                </span>
-              </div>
+              <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight hidden sm:block">
+                文言背诵
+              </span>
             </div>
 
+            {/* Divider */}
+            <div className="hidden lg:block w-px h-4 bg-zinc-200 dark:bg-zinc-700 shrink-0" />
+
             {/* Desktop Navigation Tabs */}
-            <nav className="hidden lg:flex items-center gap-1">
+            <nav className="hidden lg:flex items-center gap-0.5 flex-1 min-w-0">
               {navItems.map(item => {
                 const active = currentView === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
                       active
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
-                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
+                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     }`}
                   >
                     {item.icon}
@@ -152,62 +150,65 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </nav>
 
-            {/* Right Controls: Scope, Theme, Sound, Menu */}
-            <div className="flex items-center gap-2">
-              {/* Quick Resume Button in Desktop Bar */}
+            {/* Right Controls */}
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              {/* Quick Resume — subtle ghost pill, only on xl */}
               {lastSession && currentView !== lastSession.view && (
                 <button
                   onClick={() => onResumeSession && onResumeSession(lastSession)}
-                  className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200/80 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100/80 dark:hover:bg-red-900/40 text-xs font-medium text-red-700 dark:text-red-400 transition-colors shadow-2xs"
+                  className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                   title={`继续上次研习：${lastSession.articleTitle ? `《${lastSession.articleTitle}》` : lastSession.modeName}`}
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
-                  <span className="truncate max-w-[120px]">
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate max-w-[108px]">
                     {lastSession.articleTitle ? `接续《${lastSession.articleTitle}》` : `接续${lastSession.modeName}`}
                   </span>
                 </button>
               )}
 
-              {/* Hierarchical Scope Selector Trigger */}
+              {/* Scope Selector — fixed-width, icon + short label */}
               <button
                 onClick={() => setIsScopeModalOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 transition-colors max-w-[150px] sm:max-w-[210px] truncate"
-                title="选择背诵教材范围"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors max-w-[160px]"
+                title={`当前范围：${currentScopeLabel}`}
               >
-                <BookOpen className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <BookOpen className="w-3.5 h-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
                 <span className="truncate">{currentScopeLabel}</span>
               </button>
 
-              {/* Theme Toggle Button */}
-              <button
-                onClick={handleThemeToggle}
-                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                title={theme === "dark" ? "切换至浅色模式" : "切换至深色模式"}
-              >
-                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
+              {/* Icon-only controls grouped with a hairline separator */}
+              <div className="flex items-center gap-0.5 pl-1 border-l border-zinc-200 dark:border-zinc-700/80">
+                {/* Theme Toggle */}
+                <button
+                  onClick={handleThemeToggle}
+                  className="p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  title={theme === "dark" ? "切换至浅色模式" : "切换至深色模式"}
+                >
+                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
 
-              {/* Audio Toggle Button */}
-              <button
-                onClick={onToggleSound}
-                title={soundEnabled ? "编钟音效已开启（点击静音）" : "音效已静音（点击开启）"}
-                className={`p-1.5 rounded-lg border transition-colors ${
-                  soundEnabled
-                    ? "border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800"
-                    : "border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                }`}
-              >
-                {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              </button>
+                {/* Audio Toggle */}
+                <button
+                  onClick={onToggleSound}
+                  title={soundEnabled ? "编钟音效已开启（点击静音）" : "音效已静音（点击开启）"}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    soundEnabled
+                      ? "text-zinc-800 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800"
+                      : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
 
-              {/* Mobile Secondary Menu Toggle */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                aria-label="菜单"
-              >
-                {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-              </button>
+                {/* Mobile Menu Toggle */}
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="lg:hidden p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  aria-label="菜单"
+                >
+                  {isMobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
