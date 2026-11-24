@@ -135,6 +135,7 @@ export function App() {
             initialArticleId={activeArticleId}
             selectedScope={selectedScope}
             resumeExtra={resumeExtra}
+            onOpenArticleInView={handleOpenArticleInView}
           />
         )}
 

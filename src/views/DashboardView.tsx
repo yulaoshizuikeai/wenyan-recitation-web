@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
+import { VOLUME_DECKS, VolumeDeck, computeDeckStats } from "../data/ankiDecks";
 import { Heatmap } from "../components/Heatmap";
 import { getAllCardStates, getDailyRecords } from "../storage/db";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
@@ -16,7 +17,8 @@ import {
   CheckCircle,
   BarChart,
   ArrowUpRight,
-  RotateCcw
+  RotateCcw,
+  Play
 } from "lucide-react";
 
 interface DashboardViewProps {
@@ -140,6 +142,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       ALL_ARTICLES.find(a => a.id === "art_xb3_11")!  // 阿房宫赋
     ].filter(Boolean);
   }, []);
+
+  const cardStatesMap = useMemo(() => {
+    const map = new Map<string, CardFsrsState>();
+    cardStates.forEach(s => map.set(s.cardId, s));
+    return map;
+  }, [cardStates]);
+
+  const volumeDeckSummaries = useMemo(() => {
+    const now = Date.now();
+    return VOLUME_DECKS.map(vol => {
+      const arts = ALL_ARTICLES.filter(a => vol.moduleIds.includes(a.moduleId));
+      const stats = computeDeckStats(vol.id, vol.name, arts, cardStatesMap, now);
+      return {
+        volume: vol,
+        articles: arts,
+        stats
+      };
+    });
+  }, [cardStatesMap]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-5 space-y-5">
@@ -270,6 +291,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Recitation Heatmap */}
       <Heatmap records={dailyRecords} streak={streak} totalReviews={totalReviews} />
+
+      {/* Anki Volume Decks Progress Overview */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+              <span>高中语文 6 大选册背诵进度 (Anki 牌组概览)</span>
+            </h2>
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+              按教材各册科学分配 FSRS 遗忘复习与新词句，点击任意选册直接开背
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate("flipcard")}
+            className="text-xs font-medium text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1"
+          >
+            <span>进入牌组主控台</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {volumeDeckSummaries.map(({ volume, articles, stats }) => {
+            const maturePct = stats.totalCards > 0 ? Math.round((stats.matureCount / stats.totalCards) * 100) : 0;
+            return (
+              <div
+                key={volume.id}
+                onClick={() => onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard")}
+                className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer transition-all flex flex-col justify-between group"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-xs text-zinc-900 dark:text-zinc-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                      {volume.name}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                      {volume.badge} · {articles.length}篇
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-mono my-2.5">
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-sky-100/70 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300">
+                      新卡 {stats.newCount}
+                    </span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-100/70 dark:bg-red-950/40 text-red-700 dark:text-red-300">
+                      学习 {stats.learningCount}
+                    </span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-emerald-100/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                      复习 {stats.dueCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between text-[11px]">
+                  <div className="text-zinc-400">
+                    熟记度 <strong className="text-zinc-700 dark:text-zinc-300 font-mono">{maturePct}%</strong>
+                  </div>
+                  <span className="text-sky-600 dark:text-sky-400 font-medium flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                    <span>背诵</span>
+                    <Play className="w-3 h-3 fill-current" />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Recommended Core Articles for Snowball Recitation */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors">

@@ -7,6 +7,7 @@ import {
   GenreCategory,
   filterArticlesMulti
 } from "../data/articleTaxonomy";
+import { VOLUME_DECKS, VolumeDeck } from "../data/ankiDecks";
 import {
   Search,
   Layers,
@@ -14,7 +15,12 @@ import {
   BookOpen,
   X,
   Filter,
-  ChevronDown
+  ChevronDown,
+  Sparkles,
+  LayoutGrid,
+  ListTree,
+  Play,
+  Flame
 } from "lucide-react";
 import { NavView } from "../components/Navbar";
 import { useLastSession, LastSessionState, saveLastSession, SessionExtra } from "../storage/sessionTracker";
@@ -39,6 +45,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
   const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
+  const [catalogLayout, setCatalogLayout] = useState<"volumes" | "grid">("volumes");
   const [readingArticle, setReadingArticle] = useState<Article | null>(() => {
     if (resumeExtra?.openReader && initialArticleId) {
       return ALL_ARTICLES.find(a => a.id === initialArticleId) || null;
@@ -91,8 +98,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     });
   };
 
-  // Performance chunking: render 18 initially, load more on demand
-  const [visibleCount, setVisibleCount] = useState<number>(18);
+  // Performance chunking: render 24 initially, load more on demand
+  const [visibleCount, setVisibleCount] = useState<number>(24);
 
   const filteredArticles = useMemo(() => {
     return filterArticlesMulti(ALL_ARTICLES, {
@@ -108,12 +115,29 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     return filteredArticles.slice(0, visibleCount);
   }, [filteredArticles, visibleCount]);
 
+  // Group filtered articles by Volume Deck
+  const articlesByVolume = useMemo(() => {
+    const map = new Map<string, { volume: VolumeDeck; articles: Article[] }>();
+    for (const vol of VOLUME_DECKS) {
+      map.set(vol.id, { volume: vol, articles: [] });
+    }
+
+    for (const art of filteredArticles) {
+      const vol = VOLUME_DECKS.find(v => v.moduleIds.includes(art.moduleId));
+      if (vol && map.has(vol.id)) {
+        map.get(vol.id)!.articles.push(art);
+      }
+    }
+
+    return Array.from(map.values()).filter(group => group.articles.length > 0);
+  }, [filteredArticles]);
+
   const handleResetFilters = () => {
     setSelectedCurriculum("ALL");
     setSelectedDynasty("ALL");
     setSelectedGenre("ALL");
     setSearchQuery("");
-    setVisibleCount(18);
+    setVisibleCount(24);
   };
 
   const hasActiveFilters = selectedCurriculum !== "ALL" || selectedDynasty !== "ALL" || selectedGenre !== "ALL" || searchQuery.trim().length > 0;
@@ -143,7 +167,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               </span>
             </h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-              四维立体检索课标名篇，支持一键转入滚雪球串联、渐进遮挡与全篇精读
+              按选册排架体系化检索，支持一键转入 Anki 闪卡背诵、长篇滚雪球与渐进遮挡
             </p>
           </div>
 
@@ -155,27 +179,31 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               value={searchQuery}
               onChange={e => {
                 setSearchQuery(e.target.value);
-                setVisibleCount(18);
+                setVisibleCount(24);
               }}
               className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:border-zinc-400"
             />
           </div>
         </div>
 
-        {/* 1. Curricular Tier Segmented Bar */}
+        {/* 1. Curricular Tier Segmented Bar with Exact 6 Volumes */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-          <span className="text-[11px] text-zinc-400 w-12 shrink-0">课标：</span>
+          <span className="text-[11px] text-zinc-400 w-12 shrink-0">选册：</span>
           {[
             { id: "ALL", label: "全部 (100)" },
             { id: "GAOKAO72", label: "★ 高考必背 72 篇" },
-            { id: "BX_ALL", label: "必修全套 (36)" },
-            { id: "XB_ALL", label: "选择性必修 (35)" }
+            { id: "VOL_BX1", label: "必修上 (19)" },
+            { id: "VOL_BX2", label: "必修下 (17)" },
+            { id: "VOL_XB1", label: "选必上 (10)" },
+            { id: "VOL_XB2", label: "选必中 (8)" },
+            { id: "VOL_XB3", label: "选必下 (17)" },
+            { id: "VOL_XX", label: "选修欣赏 (29)" }
           ].map(c => (
             <button
               key={c.id}
               onClick={() => {
                 setSelectedCurriculum(c.id);
-                setVisibleCount(18);
+                setVisibleCount(24);
               }}
               className={`px-2.5 py-1 rounded-md transition-colors ${
                 selectedCurriculum === c.id
@@ -196,7 +224,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               key={d.id}
               onClick={() => {
                 setSelectedDynasty(d.id);
-                setVisibleCount(18);
+                setVisibleCount(24);
               }}
               className={`px-2 py-0.5 rounded-md transition-colors text-xs ${
                 selectedDynasty === d.id
@@ -217,7 +245,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               key={g.id}
               onClick={() => {
                 setSelectedGenre(g.id);
-                setVisibleCount(18);
+                setVisibleCount(24);
               }}
               className={`px-2 py-0.5 rounded-md transition-colors text-xs ${
                 selectedGenre === g.id
@@ -240,74 +268,219 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         </div>
       </div>
 
-      {/* Results Count Bar */}
-      <div className="flex items-center justify-between text-xs text-zinc-400 mb-3 px-1">
+      {/* Results Count Bar & Layout Toggle */}
+      <div className="flex items-center justify-between text-xs text-zinc-400 mb-4 px-1">
         <span>已筛选找到 <strong>{filteredArticles.length}</strong> 篇诗文</span>
-        <span>当前显示 {displayedArticles.length} 篇</span>
+
+        {/* Layout Mode Switcher */}
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-800 text-xs">
+          <button
+            onClick={() => setCatalogLayout("volumes")}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+              catalogLayout === "volumes"
+                ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-medium"
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            <ListTree className="w-3.5 h-3.5" />
+            <span>按选册排架</span>
+          </button>
+          <button
+            onClick={() => setCatalogLayout("grid")}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+              catalogLayout === "grid"
+                ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-medium"
+                : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>平铺网格</span>
+          </button>
+        </div>
       </div>
 
-      {/* Articles Grid (Chunk Rendered for 60fps) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-        {displayedArticles.map(article => (
-          <div
-            key={article.id}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 mb-1">
-                <span>{article.dynasty} · {article.author}</span>
-                <div className="flex items-center gap-1">
-                  <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
-                    {article.genre}
+      {/* Mode A: 按选册排架 (Volume Grouped Sections) */}
+      {catalogLayout === "volumes" && (
+        <div className="space-y-6">
+          {articlesByVolume.map(({ volume, articles }) => (
+            <div
+              key={volume.id}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs transition-colors"
+            >
+              {/* Volume Header Banner */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-zinc-100 dark:border-zinc-800">
+                <div className="flex items-center gap-2.5">
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-[11px] font-mono font-semibold">
+                    {volume.badge}
                   </span>
-                  {article.isGaoKao72 && (
-                    <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-mono text-[10px] font-semibold">
-                      高考72
-                    </span>
-                  )}
+                  <div>
+                    <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                      <span>{volume.name}</span>
+                      <span className="text-xs font-mono font-normal text-zinc-400">
+                        ({articles.length} 篇)
+                      </span>
+                    </h2>
+                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                      {volume.subtitle}
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  onClick={() => onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard")}
+                  className="px-3 py-1.5 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/20 text-sky-700 dark:text-sky-300 text-xs font-medium flex items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors shadow-2xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+                  <span>背诵本册 Anki 闪卡</span>
+                </button>
               </div>
 
-              <h3 className="text-base font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
-                《{article.title}》
-              </h3>
+              {/* Volume's Articles Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {articles.map(article => (
+                  <div
+                    key={article.id}
+                    className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 mb-1">
+                        <span>{article.dynasty} · {article.author}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
+                            {article.genre}
+                          </span>
+                          {article.isGaoKao72 && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-mono text-[10px] font-semibold">
+                              高考72
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-              <p className="text-xs font-classical text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-4 bg-zinc-50 dark:bg-zinc-800/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
-                {article.fullContent}
-              </p>
+                      <h3 className="text-sm font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-1.5">
+                        《{article.title}》
+                      </h3>
+
+                      <p className="text-xs font-classical text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-3">
+                        {article.fullContent}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 text-xs">
+                      <button
+                        onClick={() => onOpenArticleInView(article.id, "flipcard")}
+                        className="flex-1 py-1 px-2 rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-zinc-950 font-medium flex items-center justify-center gap-1 transition-colors hover:bg-sky-700"
+                        title="Anki 翻转闪卡"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>闪卡</span>
+                      </button>
+
+                      <button
+                        onClick={() => onOpenArticleInView(article.id, "snowball")}
+                        className="py-1 px-2 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium flex items-center justify-center gap-1 transition-colors"
+                        title="滚雪球串联"
+                      >
+                        <Layers className="w-3 h-3" />
+                        <span>滚雪球</span>
+                      </button>
+
+                      <button
+                        onClick={() => onOpenArticleInView(article.id, "cloze")}
+                        className="py-1 px-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        title="渐进遮挡"
+                      >
+                        遮挡
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenReadingModal(article)}
+                        className="py-1 px-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        title="全篇精读"
+                      >
+                        精读
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
+          ))}
+        </div>
+      )}
 
-            <div className="flex items-center gap-1.5 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/60 text-xs">
-              <button
-                onClick={() => onOpenArticleInView(article.id, "snowball")}
-                className="flex-1 py-1.5 px-2 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium flex items-center justify-center gap-1 transition-colors"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>滚雪球</span>
-              </button>
+      {/* Mode B: 平铺网格 (Chunk Rendered for 60fps) */}
+      {catalogLayout === "grid" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {displayedArticles.map(article => (
+            <div
+              key={article.id}
+              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-1 text-[11px] text-zinc-400 mb-1">
+                  <span>{article.dynasty} · {article.author}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-mono text-[10px]">
+                      {article.genre}
+                    </span>
+                    {article.isGaoKao72 && (
+                      <span className="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-mono text-[10px] font-semibold">
+                        高考72
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-              <button
-                onClick={() => onOpenArticleInView(article.id, "cloze")}
-                className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>遮挡</span>
-              </button>
+                <h3 className="text-base font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+                  《{article.title}》
+                </h3>
 
-              <button
-                onClick={() => handleOpenReadingModal(article)}
-                className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>精读</span>
-              </button>
+                <p className="text-xs font-classical text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-4 bg-zinc-50 dark:bg-zinc-800/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
+                  {article.fullContent}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1.5 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/60 text-xs">
+                <button
+                  onClick={() => onOpenArticleInView(article.id, "flipcard")}
+                  className="py-1.5 px-2 rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-zinc-950 font-medium flex items-center justify-center gap-1 transition-colors hover:bg-sky-700"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>闪卡</span>
+                </button>
+
+                <button
+                  onClick={() => onOpenArticleInView(article.id, "snowball")}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>滚雪球</span>
+                </button>
+
+                <button
+                  onClick={() => onOpenArticleInView(article.id, "cloze")}
+                  className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>遮挡</span>
+                </button>
+
+                <button
+                  onClick={() => handleOpenReadingModal(article)}
+                  className="py-1.5 px-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>精读</span>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Load More Button for Chunk Rendering */}
-      {visibleCount < filteredArticles.length && (
+      {catalogLayout === "grid" && visibleCount < filteredArticles.length && (
         <div className="text-center pt-6">
           <button
             onClick={() => setVisibleCount(prev => prev + 24)}
@@ -340,49 +513,43 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto py-5 space-y-4 pr-1">
-              <div className="space-y-3">
-                <div className="text-xs font-semibold text-zinc-500">【原文诵读】</div>
-                {readingArticle.paragraphs.map((p, idx) => (
-                  <p key={idx} className="text-base font-classical leading-relaxed indent-8 text-zinc-900 dark:text-zinc-100">
-                    {p}
-                  </p>
-                ))}
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 dark:border-zinc-800/60">
+                <p className="text-base font-classical text-zinc-800 dark:text-zinc-200 leading-loose whitespace-pre-line text-justify">
+                  {readingArticle.fullContent}
+                </p>
               </div>
 
               {readingArticle.translation && (
-                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1.5">
-                  <div className="text-xs font-semibold text-zinc-500">【白话译文】</div>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    {readingArticle.translation}
-                  </p>
-                </div>
-              )}
-
-              {readingArticle.annotations.length > 0 && (
-                <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
-                  <div className="text-xs font-semibold text-zinc-500">【重点字词注解】</div>
-                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-                    {readingArticle.annotations.map((ann, idx) => (
-                      <li key={idx} className="bg-zinc-50 dark:bg-zinc-800/40 p-2 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
-                        {ann}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="p-4 rounded-xl bg-zinc-50/50 dark:bg-zinc-800/20 border border-zinc-100 dark:border-zinc-800/40 text-xs text-zinc-600 dark:text-zinc-400 space-y-1">
+                  <div className="font-semibold text-zinc-700 dark:text-zinc-300 font-sans">【白话译文】</div>
+                  <p className="leading-relaxed font-classical">{readingArticle.translation}</p>
                 </div>
               )}
             </div>
 
-            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-2">
+            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  const id = readingArticle.id;
+                  setReadingArticle(null);
+                  onOpenArticleInView(id, "flipcard");
+                }}
+                className="py-1.5 px-3 rounded-lg bg-sky-600 text-white text-xs font-semibold flex items-center gap-1 hover:bg-sky-700 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>背诵闪卡</span>
+              </button>
+
               <button
                 onClick={() => {
                   const id = readingArticle.id;
                   setReadingArticle(null);
                   onOpenArticleInView(id, "snowball");
                 }}
-                className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-semibold flex items-center gap-1.5"
+                className="py-1.5 px-3 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-semibold flex items-center gap-1"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>以此篇开启滚雪球</span>
+                <span>进入滚雪球</span>
               </button>
             </div>
           </div>

@@ -113,10 +113,16 @@ export function getCurricularTiers(): CurricularTier[] {
  */
 export function filterArticlesByScope(articles: Article[], scopeId: string): Article[] {
   if (!scopeId || scopeId === "ALL") return articles;
-  if (scopeId === "GAOKAO72") return articles.filter(a => a.isGaoKao72);
+  if (scopeId === "GAOKAO72" || scopeId === "DECK_GAOKAO72") return articles.filter(a => a.isGaoKao72);
   if (scopeId === "BX_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_BX"));
   if (scopeId === "XB_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_XB"));
   if (scopeId === "XX_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_XX"));
+  if (scopeId === "VOL_BX1") return articles.filter(a => a.moduleId === "MODULE_BX_1" || a.moduleId === "MODULE_BX_1_RECITE");
+  if (scopeId === "VOL_BX2") return articles.filter(a => a.moduleId === "MODULE_BX_2" || a.moduleId === "MODULE_BX_2_RECITE");
+  if (scopeId === "VOL_XB1") return articles.filter(a => a.moduleId === "MODULE_XB_1" || a.moduleId === "MODULE_XB_1_RECITE");
+  if (scopeId === "VOL_XB2") return articles.filter(a => a.moduleId === "MODULE_XB_2" || a.moduleId === "MODULE_XB_2_RECITE");
+  if (scopeId === "VOL_XB3") return articles.filter(a => a.moduleId === "MODULE_XB_3" || a.moduleId === "MODULE_XB_3_RECITE");
+  if (scopeId === "VOL_XX") return articles.filter(a => a.moduleId === "MODULE_XX_APPRECIATION");
   return articles.filter(a => a.moduleId === scopeId);
 }
 
