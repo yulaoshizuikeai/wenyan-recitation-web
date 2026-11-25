@@ -105,34 +105,23 @@ export const Navbar: React.FC<NavbarProps> = ({
   const shortcutOf = (view: NavView) =>
     NAV_SHORTCUT_ORDER.find(s => s.view === view)?.key;
 
-  // PC 顶栏导航：按「背诵 / 冲刺资料」两组排布，设置单独收进右侧图标区
-  const navGroups: { id: string; items: { id: NavView; label: string; icon: React.ReactNode }[] }[] = [
-    {
-      id: "study",
-      items: [
-        { id: "dashboard", label: "概览", icon: <BarChart2 className="w-4 h-4" /> },
-        { id: "snowball", label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
-        { id: "flipcard", label: "牌组闪卡", icon: <Sparkles className="w-4 h-4" /> },
-        { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-4 h-4" /> }
-      ]
-    },
-    {
-      id: "exam",
-      items: [
-        { id: "cram", label: "考前抱佛脚", icon: <Flame className="w-4 h-4 text-red-500" /> },
-        { id: "scenario", label: "高考默写", icon: <HelpCircle className="w-4 h-4" /> },
-        { id: "catalog", label: "诗文典库", icon: <BookOpen className="w-4 h-4" /> }
-      ]
-    }
+  // PC 顶栏导航：4 个一级支柱（概览 / 背诵模式组 / 冲刺默写组 / 诗文典库）
+  const isStudyView =
+    currentView === "snowball" ||
+    currentView === "flipcard" ||
+    currentView === "cloze" ||
+    currentView === "cram" ||
+    currentView === "scenario";
+
+  const studyItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
+    { id: "snowball", label: "滚雪球", icon: <Layers className="w-3.5 h-3.5" /> },
+    { id: "flipcard", label: "牌组闪卡", icon: <Sparkles className="w-3.5 h-3.5" /> },
+    { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-3.5 h-3.5" /> }
   ];
 
-  // Mobile Bottom Bar has 5 core items
-  const mobileDockItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "概览", icon: <BarChart2 className="w-5 h-5" /> },
-    { id: "cram", label: "抱佛脚", icon: <Flame className="w-5 h-5 text-red-500" /> },
-    { id: "snowball", label: "滚雪球", icon: <Layers className="w-5 h-5" /> },
-    { id: "flipcard", label: "闪卡", icon: <Sparkles className="w-5 h-5" /> },
-    { id: "catalog", label: "典库", icon: <BookOpen className="w-5 h-5" /> }
+  const examItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
+    { id: "cram", label: "考前抱佛脚", icon: <Flame className="w-3.5 h-3.5 text-red-500" /> },
+    { id: "scenario", label: "高考默写", icon: <HelpCircle className="w-3.5 h-3.5" /> }
   ];
 
   const handleNavClick = (view: NavView) => {
@@ -145,18 +134,47 @@ export const Navbar: React.FC<NavbarProps> = ({
     onThemeChange(next);
   };
 
+  const renderNavBtn = (item: { id: NavView; label: string; icon: React.ReactNode }, inPill = false) => {
+    const active = currentView === item.id;
+    const shortcut = shortcutOf(item.id);
+    return (
+      <button
+        key={item.id}
+        onClick={() => handleNavClick(item.id)}
+        title={shortcut ? `${item.label}（Alt + ${shortcut}）` : item.label}
+        aria-current={active ? "page" : undefined}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+          active
+            ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
+            : inPill
+              ? "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+              : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/70"
+        }`}
+      >
+        {item.icon}
+        <span className="hidden xl:inline">{item.label}</span>
+      </button>
+    );
+  };
+
   return (
     <>
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 transition-colors">
+      {/* Top Navbar — enters low-profile immersive mode during study */}
+      <header
+        className={`sticky top-0 z-40 backdrop-blur-md border-b transition-all duration-200 ${
+          isStudyView
+            ? "bg-zinc-50/80 dark:bg-zinc-950/80 border-zinc-200/50 dark:border-zinc-800/50"
+            : "bg-white/95 dark:bg-zinc-900/95 border-zinc-200/80 dark:border-zinc-800/80"
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center gap-3 h-12">
             {/* Brand Logo */}
             <div
-              className="flex items-center gap-2 cursor-pointer select-none shrink-0"
+              className="flex items-center gap-2 cursor-pointer select-none shrink-0 group"
               onClick={() => handleNavClick("dashboard")}
             >
-              <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0 group-hover:bg-red-600 dark:group-hover:bg-red-500 dark:group-hover:text-white transition-colors">
                 诵
               </div>
               <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight hidden sm:block">
@@ -165,37 +183,29 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Divider */}
-            <div className="hidden lg:block w-px h-4 bg-zinc-200 dark:bg-zinc-700 shrink-0" />
+            <div className="hidden lg:block w-px h-4 bg-zinc-200 dark:bg-zinc-800 shrink-0" />
 
-            {/* Desktop Navigation Tabs — 分组排布，lg 仅图标、xl 显示文字 */}
-            <nav className="hidden lg:flex items-center gap-0.5 flex-1 min-w-0">
-              {navGroups.map((group, groupIdx) => (
-                <React.Fragment key={group.id}>
-                  {groupIdx > 0 && (
-                    <div className="w-px h-4 mx-1 bg-zinc-200 dark:bg-zinc-700 shrink-0" />
-                  )}
-                  {group.items.map(item => {
-                    const active = currentView === item.id;
-                    const shortcut = shortcutOf(item.id);
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleNavClick(item.id)}
-                        title={shortcut ? `${item.label}（Alt + ${shortcut}）` : item.label}
-                        aria-current={active ? "page" : undefined}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-                          active
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
-                            : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                        }`}
-                      >
-                        {item.icon}
-                        <span className="hidden xl:inline">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
+            {/* Desktop Navigation — 4 Pillars (dimmed slightly during active study for focus) */}
+            <nav
+              className={`hidden lg:flex items-center gap-1.5 flex-1 min-w-0 transition-opacity duration-200 ${
+                isStudyView ? "opacity-80 hover:opacity-100" : "opacity-100"
+              }`}
+            >
+              {/* 1. Overview */}
+              {renderNavBtn({ id: "dashboard", label: "概览", icon: <BarChart2 className="w-3.5 h-3.5" /> })}
+
+              {/* 2. Recitation Group */}
+              <div className="flex items-center gap-0.5 bg-zinc-100/80 dark:bg-zinc-800/60 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/40">
+                {studyItems.map(item => renderNavBtn(item, true))}
+              </div>
+
+              {/* 3. Exam / Sprint Group */}
+              <div className="flex items-center gap-0.5 bg-zinc-100/80 dark:bg-zinc-800/60 p-0.5 rounded-lg border border-zinc-200/50 dark:border-zinc-700/40">
+                {examItems.map(item => renderNavBtn(item, true))}
+              </div>
+
+              {/* 4. Catalog */}
+              {renderNavBtn({ id: "catalog", label: "诗文典库", icon: <BookOpen className="w-3.5 h-3.5" /> })}
             </nav>
 
             {/* Right Controls */}
@@ -372,8 +382,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Two-Tier Hierarchical Curriculum Scope Modal */}
       {isScopeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setIsScopeModalOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden animate-fade-slide-up"
+            onClick={e => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
               <div>
@@ -497,35 +513,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       )}
-
-      {/* Mobile Fixed Bottom Dock (Human-ergonomic Thumb Zone, >= 48px hit area) */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200 dark:border-zinc-800 pb-[env(safe-area-inset-bottom)] transition-colors">
-        <div className="grid grid-cols-5 h-14">
-          {mobileDockItems.map(item => {
-            const active = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`flex flex-col items-center justify-center min-h-[48px] py-1 transition-colors select-none ${
-                  active
-                    ? "text-zinc-900 dark:text-zinc-100 font-semibold"
-                    : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                }`}
-              >
-                <div
-                  className={`p-1 rounded-md transition-colors ${
-                    active ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" : ""
-                  }`}
-                >
-                  {item.icon}
-                </div>
-                <span className="text-[10px] mt-0.5 leading-none">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
     </>
   );
 };

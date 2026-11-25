@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, BookOpen } from "lucide-react";
 import { Article } from "../data/curriculumData";
 import { getUnderstanding } from "../data/articleUnderstanding";
@@ -48,13 +49,21 @@ export const UnderstandingCard: React.FC<UnderstandingCardProps> = ({
     }
   }, [activeIndex]);
 
-  return (
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-xs p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex justify-end bg-black/25 dark:bg-black/50 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-xl max-h-[85vh] bg-white dark:bg-zinc-900 rounded-t-2xl sm:rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xl flex flex-col overflow-hidden"
+        className="w-full max-w-lg h-full bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-drawer-in"
         onClick={e => e.stopPropagation()}
       >
         {/* 头部 */}
@@ -147,6 +156,7 @@ export const UnderstandingCard: React.FC<UnderstandingCardProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

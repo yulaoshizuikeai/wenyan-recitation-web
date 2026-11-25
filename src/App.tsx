@@ -154,8 +154,8 @@ export function App() {
         onShowShortcuts={() => setShowShortcuts(true)}
       />
 
-      {/* Main Content Area (padding-bottom accounts for mobile bottom dock) */}
-      <main className="flex-1 pb-20 lg:pb-10">
+      {/* Main Content Area */}
+      <main className="flex-1 pb-10">
         {currentView === "dashboard" && (
           <DashboardView
             onNavigate={setCurrentView}

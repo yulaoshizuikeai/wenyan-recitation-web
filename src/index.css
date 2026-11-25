@@ -3,10 +3,10 @@
 
 @layer base {
   :root {
-    --bg-canvas: #FAFAFA;
+    --bg-canvas: #FBFBFA;
     --bg-surface: #FFFFFF;
     --bg-surface-subtle: #F4F4F5;
-    --border-subtle: #E4E4E7;
+    --border-subtle: rgba(228, 228, 231, 0.75);
     --border-strong: #D4D4D8;
     --text-primary: #18181B;
     --text-secondary: #52525B;
@@ -76,16 +76,47 @@
 
 /* Modern Frosted Text Mask for Snowball & Cloze */
 .frosted-mask {
-  filter: blur(4px);
-  opacity: 0.28;
+  filter: blur(4.5px);
+  opacity: 0.26;
   user-select: none;
   cursor: pointer;
-  transition: filter 0.15s ease, opacity 0.15s ease;
+  transition: filter 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
 .frosted-mask:hover {
   filter: blur(1.5px);
-  opacity: 0.65;
+  opacity: 0.68;
+}
+
+/* Smooth Micro-Animations */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawerSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-slide-up {
+  animation: fadeSlideUp 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-drawer-in {
+  animation: drawerSlideInRight 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* GPU Hardware Acceleration for 60fps animations */

@@ -4,6 +4,7 @@ import { ALL_ARTICLES } from "../data/curriculumData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import { StudySidebar } from "../components/StudySidebar";
+import { StudyToolbar } from "../components/StudyToolbar";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import {
   HelpCircle,
@@ -11,8 +12,6 @@ import {
   ArrowRight,
   RotateCcw,
   AlertCircle,
-  Layers,
-  ChevronRight,
   X,
   Trophy
 } from "lucide-react";
@@ -208,6 +207,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
         return;
       }
 
+      if (e.key === "Escape" && showQuestionDrawer) {
+        e.preventDefault();
+        setShowQuestionDrawer(false);
+        return;
+      }
+
       if (inInput || showQuestionDrawer || isCompleted) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
 
@@ -232,27 +237,28 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
   const accuracyPercent = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
 
   return (
-      <div className="max-w-2xl xl:max-w-5xl mx-auto px-4 py-5 pb-24">
+      <div className="max-w-2xl xl:max-w-6xl mx-auto px-6 py-5 pb-16 animate-fade-slide-up">
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
-      <div className="min-w-0">
-      {/* Header Bar */}
-      <div className="flex items-center justify-between mb-4 text-xs">
-        <button
-          onClick={() => setShowQuestionDrawer(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors font-medium"
-        >
-          <Layers className="w-3.5 h-3.5 text-zinc-500" />
-          <span>题号索引：第 {currentIndex + 1} / {activeQuestions.length} 题</span>
-          <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
-        </button>
-
-        <div className="text-zinc-500 dark:text-zinc-400 font-mono">
-          已答 {totalAnswered} 题 ｜ 正确率：
-          <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-            {accuracyPercent}%
-          </span>
-        </div>
-      </div>
+      <div className="min-w-0 space-y-4">
+      {/* Unified Study Toolbar */}
+      <StudyToolbar
+        modeLabel="高考默写"
+        modeIcon={<HelpCircle className="w-3.5 h-3.5" />}
+        title={currentQ ? `《${currentQ.articleTitle}》` : "情境默写"}
+        subtitle={currentQ?.author}
+        onSelectTitle={() => setShowQuestionDrawer(true)}
+        progressText={`第 ${currentIndex + 1} / ${activeQuestions.length} 题`}
+        progressPercent={((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100}
+        actions={
+          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400 px-1">
+            <span>已答 {totalAnswered}</span>
+            <span className="text-zinc-300 dark:text-zinc-700">|</span>
+            <span>
+              正确率 <strong className="text-zinc-900 dark:text-zinc-100">{accuracyPercent}%</strong>
+            </span>
+          </div>
+        }
+      />
 
       {/* Progress Restored Toast */}
       {hasRestoredNotice && currentIndex > 0 && (

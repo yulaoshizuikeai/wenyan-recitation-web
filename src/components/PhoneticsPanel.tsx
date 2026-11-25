@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Volume2 } from "lucide-react";
 import { Article } from "../data/curriculumData";
 import { getPhonetics } from "../data/articlePhonetics";
@@ -8,17 +9,25 @@ interface PhoneticsPanelProps {
   onClose: () => void;
 }
 
-/** 难词注音面板：列出当前篇目的难读字词与释义 */
+/** 难词注音面板：右侧滑出抽屉，列出当前篇目的难读字词与释义 */
 export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose }) => {
   const entries = getPhonetics(article.id);
 
-  return (
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-xs p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex justify-end bg-black/25 dark:bg-black/50 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-lg max-h-[80vh] bg-white dark:bg-zinc-900 rounded-t-2xl sm:rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xl flex flex-col overflow-hidden"
+        className="w-full max-w-md h-full bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-drawer-in"
         onClick={e => e.stopPropagation()}
       >
         {/* 头部 */}
@@ -80,6 +89,7 @@ export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

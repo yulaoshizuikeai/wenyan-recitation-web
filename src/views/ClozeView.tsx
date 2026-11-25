@@ -9,7 +9,8 @@ import { getRecommendedMode } from "../domain/recommend/modeRecommender";
 import { PhoneticsPanel } from "../components/PhoneticsPanel";
 import { UnderstandingCard } from "../components/UnderstandingCard";
 import { StudySidebar } from "../components/StudySidebar";
-import { Eye, EyeOff, Search, X, RotateCcw, Volume2, BookOpen, Layers } from "lucide-react";
+import { StudyToolbar } from "../components/StudyToolbar";
+import { Eye, EyeOff, Search, X, RotateCcw, Layers } from "lucide-react";
 
 interface ClozeViewProps {
   initialArticleId?: string;
@@ -240,35 +241,28 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
   }, [filteredArticles, selectedDynastyFilter, searchQuery]);
 
   return (
-      <div className="max-w-3xl xl:max-w-6xl mx-auto px-4 py-5 pb-24">
+      <div className="max-w-3xl xl:max-w-6xl mx-auto px-6 py-5 pb-16 animate-fade-slide-up">
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
-      <div className="min-w-0">
-      {/* Header Card */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs transition-colors">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                {currentArticle.dynasty} · {currentArticle.author} · {currentArticle.genre}
-              </span>
-              {currentArticle.isGaoKao72 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium border border-zinc-200 dark:border-zinc-700">
-                  高考72篇
-                </span>
-              )}
-            </div>
-            <h1 className="text-xl sm:text-2xl font-classical font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-              《{currentArticle.title}》
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-2">
+      <div className="min-w-0 space-y-4">
+      {/* Unified Study Toolbar */}
+      <StudyToolbar
+        modeLabel="渐进遮挡"
+        modeIcon={<Eye className="w-3.5 h-3.5" />}
+        title={`《${currentArticle.title}》`}
+        subtitle={`${currentArticle.dynasty} · ${currentArticle.author}`}
+        onSelectTitle={() => setShowArticlePicker(true)}
+        progressText={`L${level} · ${levelsConfig[level]?.name || ""}`}
+        progressPercent={(level / 4) * 100}
+        onShowPhonetics={() => setShowPhonetics(true)}
+        onShowUnderstanding={() => setShowUnderstanding(true)}
+        actions={
+          <>
             {/* Font Size Adjuster */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60">
               <button
                 onClick={() => setFontSizeIndex(Math.max(0, fontSizeIndex - 1))}
                 disabled={fontSizeIndex === 0}
-                className="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 disabled:opacity-40 hover:bg-white dark:hover:bg-zinc-700 rounded transition-colors"
+                className="px-1.5 py-0.5 text-[11px] text-zinc-600 dark:text-zinc-300 disabled:opacity-40 hover:bg-white dark:hover:bg-zinc-700 rounded transition-colors"
                 title="缩小字号"
               >
                 A-
@@ -279,7 +273,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
               <button
                 onClick={() => setFontSizeIndex(Math.min(fontSizes.length - 1, fontSizeIndex + 1))}
                 disabled={fontSizeIndex === fontSizes.length - 1}
-                className="px-2 py-1 text-xs text-zinc-600 dark:text-zinc-300 disabled:opacity-40 hover:bg-white dark:hover:bg-zinc-700 rounded transition-colors"
+                className="px-1.5 py-0.5 text-[11px] text-zinc-600 dark:text-zinc-300 disabled:opacity-40 hover:bg-white dark:hover:bg-zinc-700 rounded transition-colors"
                 title="放大字号"
               >
                 A+
@@ -288,51 +282,36 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
 
             <button
               onClick={() => setRevealAll(!revealAll)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
                 revealAll
                   ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-zinc-900"
                   : "border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               }`}
+              title="快捷键: R"
             >
               {revealAll ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               <span>{revealAll ? "恢复遮挡" : "全览"}</span>
             </button>
 
             <button
-              onClick={() => setShowPhonetics(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-              title="查看本篇难词注音"
-            >
-              <Volume2 className="w-3.5 h-3.5 text-zinc-500" />
-              <span>注音</span>
-            </button>
-
-            <button
-              onClick={() => setShowUnderstanding(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-              title="查看本篇理解大意"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
-              <span>理解</span>
-            </button>
-
-            <button
               onClick={() => setShowArticlePicker(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
-              <Search className="w-3.5 h-3.5 text-zinc-500" />
+              <Search className="w-3.5 h-3.5 text-zinc-400" />
               <span>换篇目</span>
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* 5 Levels Modern Segmented Bar */}
-        <div className="grid grid-cols-5 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mt-4 text-xs font-medium">
+      {/* 5 Levels Modern Segmented Bar */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-1.5 shadow-2xs">
+        <div className="grid grid-cols-5 gap-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl p-1 text-xs font-medium">
           {levelsConfig.map(cfg => (
             <button
               key={cfg.lvl}
               onClick={() => handleLevelChange(cfg.lvl)}
-              className={`py-1.5 px-1 rounded-lg text-center transition-colors ${
+              className={`py-1.5 px-1 rounded-lg text-center transition-all ${
                 level === cfg.lvl
                   ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 font-semibold shadow-2xs"
                   : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"

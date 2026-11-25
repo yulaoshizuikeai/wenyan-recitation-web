@@ -10,6 +10,8 @@
 
 ### 新增
 
+- **统一学习工作区工具栏**：新增 `src/components/StudyToolbar.tsx`，为滚雪球、渐进遮挡、高考默写等桌面端学习视图提供一致的模式标签、切篇入口、内联进度条与注音/大意快捷开关。
+
 - **JSON 备份导入恢复**：设置页新增「导入恢复 JSON」功能，支持校验并事务性恢复 `cards` 与 `daily_records` 到本地 IndexedDB（`src/storage/db.ts`、`src/views/SettingsView.tsx`）。
 - **高考默写轮次结算**：答完最后一题后展示本轮作答数与正确率结算卡片，支持「重新刷一遍」与「仅重做错题」（`src/views/ScenarioView.tsx`）。
 - **本地日期工具**：新增 `src/utils/date.ts`（`getLocalDateString`），统一使用本地时区 `YYYY-MM-DD`。
@@ -25,6 +27,11 @@
 
 ### 变更
 
+- **全站桌面端 UI 与交互重构**：
+  - **顶栏分组与沉浸模式**：`src/components/Navbar.tsx` 将桌面端导航收拢为「概览 / 背诵模式组 / 冲刺默写组 / 诗文典库」四大清晰支柱，进入背诵视图时自动切换为低干扰沉浸态；移除多余的移动端底部固定栏并精简 `src/App.tsx` 底部留白。
+  - **极简启动器首页**：`src/views/DashboardView.tsx` 移除重复的接续按钮与冗长欢迎区，重构为「左接续启动 + 右 2x2 核心指标」与「五模式快捷启动条」的紧凑桌面布局，首屏直达核心学习任务。
+  - **右侧滑出式辅助抽屉**：`src/components/PhoneticsPanel.tsx` 与 `src/components/UnderstandingCard.tsx` 改为桌面端右侧滑出抽屉（使用 `createPortal` 挂载至 `document.body`，避免父容器动画变换导致遮罩高度被裁切，支持 `Esc` 关闭），查阅难词注音与段落串讲时不再遮挡居中阅读视角。
+  - **学习视图体验打磨**：`src/views/SnowballView.tsx`、`src/views/ClozeView.tsx`、`src/views/ScenarioView.tsx` 接入统一 `StudyToolbar`，其中滚雪球底部操作栏改为居中主栏内的 `sticky bottom-5` 悬浮条（解决短篇首联时遮挡正文的问题）；`src/views/FlipCardView.tsx` 优化 3D 翻卡悬停反馈与过渡曲线；`src/index.css` 采用 Notion 式温润纸白画布（`#FBFBFA`）与微动效关键帧。
 - **路由视图懒加载拆包**：`src/App.tsx` 对 `SnowballView`、`FlipCardView`、`ClozeView`、`ScenarioView`、`CramModeView`、`CatalogView`、`SettingsView` 启用 `React.lazy` + `Suspense`，主包体积由 `812.18 kB` 降至 `422.97 kB`，消除构建体积告警。
 - **真正纯离线与无障碍支持**：`index.html` 移除 `fonts.googleapis.com` 外链字体请求与 `maximum-scale=1.0, user-scalable=no` 缩放限制。
 - **无偏随机洗牌**：`src/domain/fsrs/ankiScheduler.ts` 新增 Fisher-Yates 洗牌算法 `shuffleArray`，替换原有 `.sort(() => 0.5 - Math.random())`，同步用于 `FlipCardView` 随机抽背。

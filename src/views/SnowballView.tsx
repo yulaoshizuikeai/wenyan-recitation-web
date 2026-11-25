@@ -25,13 +25,12 @@ import {
   X,
   Layers,
   Sparkles,
-  Command,
-  Volume2,
-  BookOpen
+  Command
 } from "lucide-react";
 import { PhoneticsPanel } from "../components/PhoneticsPanel";
 import { UnderstandingCard } from "../components/UnderstandingCard";
 import { StudySidebar } from "../components/StudySidebar";
+import { StudyToolbar } from "../components/StudyToolbar";
 
 interface SnowballViewProps {
   initialArticleId?: string;
@@ -318,79 +317,30 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   }, [filteredArticles, selectedDynastyFilter, searchQuery]);
 
   return (
-      <div className="max-w-3xl xl:max-w-6xl mx-auto px-4 py-5 pb-32" ref={scrollRef}>
+      <div className="max-w-3xl xl:max-w-6xl mx-auto px-6 py-5 pb-16 animate-fade-slide-up" ref={scrollRef}>
       <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
-      <div className="min-w-0">
-      {/* Article Header & Selector */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs transition-colors">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                {currentArticle.dynasty} · {currentArticle.author} · {currentArticle.genre}
-              </span>
-              {currentArticle.isGaoKao72 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium border border-zinc-200 dark:border-zinc-700">
-                  高考72篇
-                </span>
-              )}
-            </div>
-            <h1 className="text-xl sm:text-2xl font-classical font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-              《{currentArticle.title}》
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowPhonetics(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-              title="查看本篇难词注音"
-            >
-              <Volume2 className="w-3.5 h-3.5 text-zinc-500" />
-              <span>注音</span>
-            </button>
-
-            <button
-              onClick={() => setShowUnderstanding(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-              title="卡壳时看看全文在讲什么"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
-              <span>理解</span>
-            </button>
-
-            <button
-              onClick={() => setShowArticlePicker(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-            >
-              <Search className="w-3.5 h-3.5 text-zinc-500" />
-              <span>换一篇 ({filteredArticles.length})</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Segmented Progress Bar */}
-        {currentStage && (
-          <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/60">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="text-zinc-500 dark:text-zinc-400">
-                滚雪球第 <strong>{currentStageIndex + 1}</strong> / {stages.length} 联
-              </span>
-              <span className="font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                {Math.round(((currentStageIndex + 1) / stages.length) * 100)}%
-              </span>
-            </div>
-
-            {/* Clean Segmented Track */}
-            <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all duration-200"
-                style={{ width: `${((currentStageIndex + 1) / stages.length) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+      <div className="min-w-0 space-y-4">
+      {/* Unified Study Toolbar */}
+      <StudyToolbar
+        modeLabel="长卷滚雪球"
+        modeIcon={<Layers className="w-3.5 h-3.5" />}
+        title={`《${currentArticle.title}》`}
+        subtitle={`${currentArticle.dynasty} · ${currentArticle.author}`}
+        onSelectTitle={() => setShowArticlePicker(true)}
+        progressText={currentStage ? `第 ${currentStageIndex + 1} / ${stages.length} 联` : undefined}
+        progressPercent={currentStage ? ((currentStageIndex + 1) / stages.length) * 100 : undefined}
+        onShowPhonetics={() => setShowPhonetics(true)}
+        onShowUnderstanding={() => setShowUnderstanding(true)}
+        actions={
+          <button
+            onClick={() => setShowArticlePicker(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Search className="w-3.5 h-3.5 text-zinc-400" />
+            <span>换一篇 ({filteredArticles.length})</span>
+          </button>
+        }
+      />
 
       {/* Main Workspace */}
       {currentStage ? (
@@ -530,6 +480,39 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         </div>
       )}
 
+      {/* ChatGPT-style Sticky Bottom Action Bar — aligned to main reading column, never overlaps text */}
+      <div className="sticky bottom-5 z-30 mt-5">
+        <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-2 shadow-[0_4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex items-center gap-2">
+          {currentStageIndex > 0 && (
+            <button
+              onClick={handlePrevStage}
+              className="px-3.5 py-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-colors"
+              title="快捷键: ←"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">上一步</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleNextStage}
+            className="flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white shadow-2xs"
+          >
+            {isCompleted ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>通篇结业 · 沉淀 FSRS (Space)</span>
+              </>
+            ) : (
+              <>
+                <span>背熟了 · 滚雪球下一段 (Space)</span>
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       </div>
 
       <StudySidebar
@@ -554,43 +537,6 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         hint="滚雪球按「新联 + 前文串联」推进。前文被遮住时先盲诵，卡住了再点开对照。"
       />
 
-      </div>
-
-      {/* Floating Bottom Action Dock (Sticky Ergonomic Control) */}
-      <div className="fixed bottom-14 lg:bottom-4 left-0 right-0 z-30 pointer-events-none px-4">
-        <div className="max-w-xl mx-auto pointer-events-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-2.5 shadow-lg flex items-center gap-2">
-          {currentStageIndex > 0 && (
-            <button
-              onClick={handlePrevStage}
-              className="px-3.5 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-colors"
-              title="快捷键: ←"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">上一步</span>
-            </button>
-          )}
-
-          <button
-            onClick={handleNextStage}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
-              isCompleted
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs"
-                : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white shadow-xs"
-            }`}
-          >
-            {isCompleted ? (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>通篇结业 · 沉淀 FSRS (Space)</span>
-              </>
-            ) : (
-              <>
-                <span>背熟了 · 滚雪球下一段 (Space)</span>
-                <ChevronRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </div>
       </div>
 
       {/* Settlement Modal */}

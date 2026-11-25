@@ -71,7 +71,7 @@ export const StudySidebar: React.FC<StudySidebarProps> = ({
               </div>
               <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all duration-200"
+                  className="h-full bg-red-600 dark:bg-red-500 transition-all duration-200"
                   style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
                 />
               </div>

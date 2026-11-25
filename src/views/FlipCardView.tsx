@@ -703,10 +703,10 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
               {/* 3D Flip Card Container */}
               <div
                 onClick={handleFlip}
-                className="perspective-1000 min-h-[300px] sm:min-h-[340px] cursor-pointer mb-5 select-none"
+                className="perspective-1000 min-h-[300px] sm:min-h-[340px] cursor-pointer mb-5 select-none group"
               >
                 <div
-                  className={`relative w-full h-full min-h-[300px] sm:min-h-[340px] rounded-2xl p-6 sm:p-8 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm transition-all duration-300 transform-style-3d flex flex-col justify-between ${
+                  className={`relative w-full h-full min-h-[300px] sm:min-h-[340px] rounded-2xl p-6 sm:p-8 border border-zinc-200 dark:border-zinc-800 group-hover:border-zinc-300 dark:group-hover:border-zinc-700 bg-white dark:bg-zinc-900 shadow-sm group-hover:shadow-md transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] transform-style-3d flex flex-col justify-between ${
                     isFlipped ? "rotate-y-180" : ""
                   }`}
                 >
