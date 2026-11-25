@@ -1,18 +1,31 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Navbar, NavView } from "./components/Navbar";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { Navbar, NavView, NAV_SHORTCUT_ORDER } from "./components/Navbar";
+import { ShortcutHelp } from "./components/ShortcutHelp";
 import { DashboardView } from "./views/DashboardView";
-import { SnowballView } from "./views/SnowballView";
-import { FlipCardView } from "./views/FlipCardView";
-import { ClozeView } from "./views/ClozeView";
-import { ScenarioView } from "./views/ScenarioView";
-import { CramModeView } from "./views/CramModeView";
-import { CatalogView } from "./views/CatalogView";
-import { SettingsView } from "./views/SettingsView";
 import { sound } from "./sound/audioSynthesizer";
 import { getSetting, setSetting } from "./storage/db";
 import { getStoredTheme, applyTheme, AppTheme } from "./utils/theme";
 import { useLastSession, LastSessionState, SessionExtra, VALID_NAV_VIEWS, getLastSession } from "./storage/sessionTracker";
 import { ALL_ARTICLES } from "./data/curriculumData";
+
+const SnowballView = React.lazy(() => import("./views/SnowballView").then(m => ({ default: m.SnowballView })));
+const FlipCardView = React.lazy(() => import("./views/FlipCardView").then(m => ({ default: m.FlipCardView })));
+const ClozeView = React.lazy(() => import("./views/ClozeView").then(m => ({ default: m.ClozeView })));
+const ScenarioView = React.lazy(() => import("./views/ScenarioView").then(m => ({ default: m.ScenarioView })));
+const CramModeView = React.lazy(() => import("./views/CramModeView").then(m => ({ default: m.CramModeView })));
+const CatalogView = React.lazy(() => import("./views/CatalogView").then(m => ({ default: m.CatalogView })));
+const SettingsView = React.lazy(() => import("./views/SettingsView").then(m => ({ default: m.SettingsView })));
+
+function ViewLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center py-24 text-xs text-zinc-400 dark:text-zinc-500">
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-pulse" />
+        <span>正在加载学习视图…</span>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
   const { lastSession } = useLastSession();
@@ -27,6 +40,7 @@ export function App() {
   const [resumeExtra, setResumeExtra] = useState<SessionExtra | undefined>(undefined);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const hasAutoResumedRef = useRef<boolean>(false);
 
   // Apply theme changes to document
@@ -54,6 +68,41 @@ export function App() {
         }
       });
     }
+  }, []);
+
+  // Global keyboard shortcuts: Alt + 1~8 switches views, ? opens the shortcut sheet
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowShortcuts(prev => !prev);
+        return;
+      }
+
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const digit = e.code.startsWith("Digit") ? e.code.slice(5) : "";
+        const matched = NAV_SHORTCUT_ORDER.find(s => s.key === digit);
+        if (matched) {
+          e.preventDefault();
+          setResumeExtra(undefined);
+          setCurrentView(matched.view);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const handleSelectScope = (scope: string) => {
@@ -102,6 +151,7 @@ export function App() {
         onThemeChange={setTheme}
         lastSession={lastSession}
         onResumeSession={handleResumeLastSession}
+        onShowShortcuts={() => setShowShortcuts(true)}
       />
 
       {/* Main Content Area (padding-bottom accounts for mobile bottom dock) */}
@@ -115,60 +165,63 @@ export function App() {
           />
         )}
 
-        {currentView === "cram" && (
-          <CramModeView
-            onOpenArticleInView={handleOpenArticleInView}
-            resumeExtra={resumeExtra}
-          />
-        )}
+        <Suspense fallback={<ViewLoadingFallback />}>
+          {currentView === "cram" && (
+            <CramModeView
+              onOpenArticleInView={handleOpenArticleInView}
+              resumeExtra={resumeExtra}
+            />
+          )}
 
-        {currentView === "snowball" && (
-          <SnowballView
-            initialArticleId={activeArticleId}
-            selectedScope={selectedScope}
-            resumeExtra={resumeExtra}
-          />
-        )}
+          {currentView === "snowball" && (
+            <SnowballView
+              initialArticleId={activeArticleId}
+              selectedScope={selectedScope}
+              resumeExtra={resumeExtra}
+            />
+          )}
 
-        {currentView === "flipcard" && (
-          <FlipCardView
-            initialArticleId={activeArticleId}
-            selectedScope={selectedScope}
-            resumeExtra={resumeExtra}
-            onOpenArticleInView={handleOpenArticleInView}
-          />
-        )}
+          {currentView === "flipcard" && (
+            <FlipCardView
+              initialArticleId={activeArticleId}
+              selectedScope={selectedScope}
+              resumeExtra={resumeExtra}
+              onOpenArticleInView={handleOpenArticleInView}
+            />
+          )}
 
-        {currentView === "cloze" && (
-          <ClozeView
-            initialArticleId={activeArticleId}
-            selectedScope={selectedScope}
-            resumeExtra={resumeExtra}
-          />
-        )}
+          {currentView === "cloze" && (
+            <ClozeView
+              initialArticleId={activeArticleId}
+              selectedScope={selectedScope}
+              resumeExtra={resumeExtra}
+              onOpenArticleInView={handleOpenArticleInView}
+            />
+          )}
 
-        {currentView === "scenario" && (
-          <ScenarioView
-            resumeExtra={resumeExtra}
-          />
-        )}
+          {currentView === "scenario" && (
+            <ScenarioView
+              resumeExtra={resumeExtra}
+            />
+          )}
 
-        {currentView === "catalog" && (
-          <CatalogView
-            initialArticleId={activeArticleId}
-            resumeExtra={resumeExtra}
-            onOpenArticleInView={handleOpenArticleInView}
-            onResumeSession={handleResumeLastSession}
-            selectedScope={selectedScope}
-          />
-        )}
+          {currentView === "catalog" && (
+            <CatalogView
+              initialArticleId={activeArticleId}
+              resumeExtra={resumeExtra}
+              onOpenArticleInView={handleOpenArticleInView}
+              onResumeSession={handleResumeLastSession}
+              selectedScope={selectedScope}
+            />
+          )}
 
-        {currentView === "settings" && (
-          <SettingsView
-            theme={theme}
-            onThemeChange={setTheme}
-          />
-        )}
+          {currentView === "settings" && (
+            <SettingsView
+              theme={theme}
+              onThemeChange={setTheme}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Minimal Footer (hidden on mobile to make room for bottom dock) */}
@@ -182,6 +235,8 @@ export function App() {
           </p>
         </div>
       </footer>
+
+      <ShortcutHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 }

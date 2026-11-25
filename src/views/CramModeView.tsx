@@ -223,6 +223,8 @@ export const CramModeView: React.FC<CramModeViewProps> = ({ onOpenArticleInView,
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
+      // 让 Alt/Ctrl/Cmd 组合键留给全局导航
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
 
       if (e.code === "Space") {
         e.preventDefault();

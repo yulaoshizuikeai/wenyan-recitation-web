@@ -4,15 +4,28 @@ import { ClozeEngine, ClozeToken } from "../domain/cloze/clozeEngine";
 import { sound } from "../sound/audioSynthesizer";
 import { filterArticlesByScope, DYNASTY_GROUPS, DynastyEra } from "../data/articleTaxonomy";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
-import { Eye, EyeOff, Search, X, RotateCcw } from "lucide-react";
+import { getPhonetics } from "../data/articlePhonetics";
+import { getRecommendedMode } from "../domain/recommend/modeRecommender";
+import { PhoneticsPanel } from "../components/PhoneticsPanel";
+import { UnderstandingCard } from "../components/UnderstandingCard";
+import { StudySidebar } from "../components/StudySidebar";
+import { Eye, EyeOff, Search, X, RotateCcw, Volume2, BookOpen, Layers } from "lucide-react";
 
 interface ClozeViewProps {
   initialArticleId?: string;
   selectedScope: string;
   resumeExtra?: SessionExtra;
+  onOpenArticleInView?: (articleId: string, view: NavViewName) => void;
 }
 
-export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selectedScope, resumeExtra }) => {
+type NavViewName = "snowball" | "cloze" | "flipcard" | "catalog";
+
+export const ClozeView: React.FC<ClozeViewProps> = ({
+  initialArticleId,
+  selectedScope,
+  resumeExtra,
+  onOpenArticleInView
+}) => {
   const filteredArticles = useMemo(() => {
     return filterArticlesByScope(ALL_ARTICLES, selectedScope);
   }, [selectedScope]);
@@ -51,6 +64,8 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
   const [revealAll, setRevealAll] = useState<boolean>(false);
   const [revealedTokenIds, setRevealedTokenIds] = useState<Set<number>>(new Set());
   const [showArticlePicker, setShowArticlePicker] = useState<boolean>(false);
+  const [showPhonetics, setShowPhonetics] = useState<boolean>(false);
+  const [showUnderstanding, setShowUnderstanding] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedDynastyFilter, setSelectedDynastyFilter] = useState<DynastyEra>("ALL");
 
@@ -65,12 +80,36 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
     return ALL_ARTICLES.find(a => a.id === selectedArticleId) || ALL_ARTICLES[0];
   }, [selectedArticleId]);
 
-  // Extract cloze keywords from annotations
+  // Extract cloze keywords: 难词注音表中的考点词优先，其次注释词；剔除纯虚词并控制密度
   const clozeKeywords = useMemo(() => {
-    const kws = currentArticle.annotations
-      .map(a => a.split(/[：（\s]/)[0])
-      .filter(k => k.length >= 2 && k.length <= 6);
-    return kws.length > 0 ? kws : ["天下", "君子", "故", "以", "夫", "何"];
+    const FUNCTION_WORDS = new Set(["之", "乎", "者", "也", "矣", "焉", "哉", "以", "于", "而", "则", "虽", "故", "岂", "夫", "盖", "若", "其", "何", "乃", "因", "是", "有", "无"]);
+
+    const candidates: string[] = [];
+
+    // 注音表里的难词本身就是考点词眼
+    for (const entry of getPhonetics(currentArticle.id)) {
+      if (entry.word.length >= 1) candidates.push(entry.word);
+    }
+
+    // 注释词：取释义前的词条部分
+    for (const a of currentArticle.annotations) {
+      const kw = a.split(/[：（(]/)[0].trim();
+      if (kw.length >= 2) candidates.push(kw);
+    }
+
+    const seen = new Set<string>();
+    const filtered: string[] = [];
+    for (const kw of candidates) {
+      if (kw.length < 1 || kw.length > 6) continue;
+      if (FUNCTION_WORDS.has(kw)) continue;
+      if (seen.has(kw)) continue;
+      if (!currentArticle.fullContent.includes(kw)) continue;
+      seen.add(kw);
+      filtered.push(kw);
+    }
+
+    // 密度控制：长词优先，最多 20 个
+    return filtered.sort((a, b) => b.length - a.length).slice(0, 20);
   }, [currentArticle]);
 
   // Tokenize text into paragraphs
@@ -117,6 +156,12 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
     { lvl: 4, name: "L4 全盲", desc: "全篇下划线盲测" }
   ];
 
+  // 当前篇目更适合滚雪球串联时给出软提示
+  const modeAdvice = useMemo(() => {
+    const rec = getRecommendedMode(currentArticle);
+    return rec.mode === "snowball" ? rec : null;
+  }, [currentArticle]);
+
   // Sync to session tracker
   useEffect(() => {
     if (!currentArticle) return;
@@ -154,6 +199,29 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
     setHasRestoredNotice(false);
   };
 
+  // PC 键盘操作：←/→ 调整遮挡等级，R 全览切换
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showArticlePicker || showPhonetics || showUnderstanding) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        handleLevelChange(Math.max(0, level - 1));
+      } else if (e.code === "ArrowRight") {
+        e.preventDefault();
+        handleLevelChange(Math.min(levelsConfig.length - 1, level + 1));
+      } else if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setRevealAll(prev => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [level, showArticlePicker, showPhonetics, showUnderstanding]);
+
   const searchedArticles = useMemo(() => {
     let list = filteredArticles;
     if (selectedDynastyFilter !== "ALL") {
@@ -172,7 +240,9 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
   }, [filteredArticles, selectedDynastyFilter, searchQuery]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-5 pb-24">
+      <div className="max-w-3xl xl:max-w-6xl mx-auto px-4 py-5 pb-24">
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
+      <div className="min-w-0">
       {/* Header Card */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs transition-colors">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -229,6 +299,24 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
             </button>
 
             <button
+              onClick={() => setShowPhonetics(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+              title="查看本篇难词注音"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-zinc-500" />
+              <span>注音</span>
+            </button>
+
+            <button
+              onClick={() => setShowUnderstanding(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+              title="查看本篇理解大意"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
+              <span>理解</span>
+            </button>
+
+            <button
               onClick={() => setShowArticlePicker(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
             >
@@ -255,6 +343,24 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
           ))}
         </div>
       </div>
+
+      {/* Mode Suggestion */}
+      {modeAdvice && onOpenArticleInView && (
+        <div className="mb-4 bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200/70 dark:border-sky-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+          <div className="flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+            <span>
+              这篇共 {modeAdvice.netLength} 字，<strong>更适合滚雪球串联</strong>：{modeAdvice.reason}
+            </span>
+          </div>
+          <button
+            onClick={() => onOpenArticleInView(currentArticle.id, "snowball")}
+            className="shrink-0 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline underline-offset-2"
+          >
+            去串联
+          </button>
+        </div>
+      )}
 
       {/* Progress Restored Toast */}
       {hasRestoredNotice && (
@@ -313,7 +419,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
                     <button
                       key={token.id}
                       onClick={() => handleToggleToken(token.id)}
-                      className="inline-block mx-0.5 px-1 py-0 rounded border-b border-dashed border-zinc-400 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-transparent select-none cursor-pointer transition-colors"
+                      className="inline-block mx-0.5 px-1 py-0 rounded border-b border-dashed border-zinc-400 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-transparent select-none cursor-pointer transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:border-zinc-500"
                       title="点击刮开查看正解"
                     >
                       {token.originalText}
@@ -335,6 +441,30 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
             </p>
           ))}
         </div>
+      </div>
+
+      </div>
+
+      <StudySidebar
+        article={{
+          title: currentArticle.title,
+          author: currentArticle.author,
+          dynasty: currentArticle.dynasty,
+          genre: currentArticle.genre,
+          isGaoKao72: currentArticle.isGaoKao72
+        }}
+        progressLabel={`遮挡等级 ${levelsConfig[level].name}`}
+        progressPercent={((level + 1) / levelsConfig.length) * 100}
+        shortcuts={[
+          { keys: "← / →", label: "降低 / 提高遮挡" },
+          { keys: "R", label: "全览 / 恢复遮挡" }
+        ]}
+        onShowPhonetics={() => setShowPhonetics(true)}
+        onShowUnderstanding={() => setShowUnderstanding(true)}
+        onChangeArticle={() => setShowArticlePicker(true)}
+        hint="先按当前梯度整段默背，卡住再点虚线框刮开单字。连续两档都能顺畅背完，就可以升一档。"
+      />
+
       </div>
 
       {/* Article Switcher Drawer / Modal */}
@@ -430,6 +560,16 @@ export const ClozeView: React.FC<ClozeViewProps> = ({ initialArticleId, selected
             </div>
           </div>
         </div>
+      )}
+
+      {/* 难词注音面板 */}
+      {showPhonetics && (
+        <PhoneticsPanel article={currentArticle} onClose={() => setShowPhonetics(false)} />
+      )}
+
+      {/* 理解大意卡片 */}
+      {showUnderstanding && (
+        <UnderstandingCard article={currentArticle} onClose={() => setShowUnderstanding(false)} />
       )}
     </div>
   );

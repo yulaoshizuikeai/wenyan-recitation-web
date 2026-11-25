@@ -3,7 +3,7 @@ import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import { SnowballChainingEngine, SnowballStage } from "../domain/cloze/snowballEngine";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
-import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
+import { getFsrsSettings, createFsrsEngine } from "../domain/fsrs/fsrsEngine";
 import { Rating } from "../domain/fsrs/fsrsTypes";
 import { getCardState, saveCardStatesBatch, recordReviewLog, getBottlenecks, saveBottlenecks } from "../storage/db";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
@@ -25,8 +25,13 @@ import {
   X,
   Layers,
   Sparkles,
-  Command
+  Command,
+  Volume2,
+  BookOpen
 } from "lucide-react";
+import { PhoneticsPanel } from "../components/PhoneticsPanel";
+import { UnderstandingCard } from "../components/UnderstandingCard";
+import { StudySidebar } from "../components/StudySidebar";
 
 interface SnowballViewProps {
   initialArticleId?: string;
@@ -54,6 +59,8 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDynastyFilter, setSelectedDynastyFilter] = useState<DynastyEra>("ALL");
   const [showArticlePicker, setShowArticlePicker] = useState(false);
+  const [showPhonetics, setShowPhonetics] = useState(false);
+  const [showUnderstanding, setShowUnderstanding] = useState(false);
 
   const currentArticle: Article = useMemo(() => {
     return ALL_ARTICLES.find(a => a.id === selectedArticleId) || ALL_ARTICLES[0];
@@ -202,7 +209,8 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       fireConfetti();
       localStorage.removeItem(`snowball_stage_${currentArticle.id}`);
 
-      const fsrs = new FSRSEngine();
+      const fsrsSettings = await Promise.resolve(getFsrsSettings());
+      const fsrs = createFsrsEngine(fsrsSettings);
       const updatedCards = [];
       let totalNextDays = 0;
       let ratedCardsCount = 0;
@@ -227,7 +235,7 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         totalUnits: stages.length,
         smoothCount: stages.length - bottleneckIndices.size,
         bottleneckCount: bottleneckIndices.size,
-        avgNextInterval: ratedCardsCount > 0 ? totalNextDays / ratedCardsCount : 3.0
+        avgNextInterval: ratedCardsCount > 0 ? totalNextDays / ratedCardsCount : 0
       });
 
       setShowSettlementModal(true);
@@ -266,6 +274,8 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
       // Don't trigger if picker or modal is open
       if (showArticlePicker || showSettlementModal) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // 让 Alt/Ctrl/Cmd 组合键留给全局导航
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
 
       if (e.code === "Space" || e.code === "Enter") {
         e.preventDefault();
@@ -308,7 +318,9 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
   }, [filteredArticles, selectedDynastyFilter, searchQuery]);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-5 pb-32" ref={scrollRef}>
+      <div className="max-w-3xl xl:max-w-6xl mx-auto px-4 py-5 pb-32" ref={scrollRef}>
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
+      <div className="min-w-0">
       {/* Article Header & Selector */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 mb-5 shadow-xs transition-colors">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -328,13 +340,33 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
             </h1>
           </div>
 
-          <button
-            onClick={() => setShowArticlePicker(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
-          >
-            <Search className="w-3.5 h-3.5 text-zinc-500" />
-            <span>换一篇 ({filteredArticles.length})</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPhonetics(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+              title="查看本篇难词注音"
+            >
+              <Volume2 className="w-3.5 h-3.5 text-zinc-500" />
+              <span>注音</span>
+            </button>
+
+            <button
+              onClick={() => setShowUnderstanding(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+              title="卡壳时看看全文在讲什么"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-zinc-500" />
+              <span>理解</span>
+            </button>
+
+            <button
+              onClick={() => setShowArticlePicker(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+            >
+              <Search className="w-3.5 h-3.5 text-zinc-500" />
+              <span>换一篇 ({filteredArticles.length})</span>
+            </button>
+          </div>
         </div>
 
         {/* Segmented Progress Bar */}
@@ -498,6 +530,32 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
         </div>
       )}
 
+      </div>
+
+      <StudySidebar
+        article={{
+          title: currentArticle.title,
+          author: currentArticle.author,
+          dynasty: currentArticle.dynasty,
+          genre: currentArticle.genre,
+          isGaoKao72: currentArticle.isGaoKao72
+        }}
+        progressLabel={`第 ${currentStageIndex + 1} / ${stages.length} 联`}
+        progressPercent={currentStage ? ((currentStageIndex + 1) / Math.max(1, stages.length)) * 100 : 0}
+        shortcuts={[
+          { keys: "Space", label: "背熟，下一联" },
+          { keys: "←", label: "回到上一联" },
+          { keys: "B", label: "标记卡壳" },
+          { keys: "M", label: "前文遮挡/全览" }
+        ]}
+        onShowPhonetics={() => setShowPhonetics(true)}
+        onShowUnderstanding={() => setShowUnderstanding(true)}
+        onChangeArticle={() => setShowArticlePicker(true)}
+        hint="滚雪球按「新联 + 前文串联」推进。前文被遮住时先盲诵，卡住了再点开对照。"
+      />
+
+      </div>
+
       {/* Floating Bottom Action Dock (Sticky Ergonomic Control) */}
       <div className="fixed bottom-14 lg:bottom-4 left-0 right-0 z-30 pointer-events-none px-4">
         <div className="max-w-xl mx-auto pointer-events-auto bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 rounded-2xl p-2.5 shadow-lg flex items-center gap-2">
@@ -572,7 +630,9 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
               <div className="flex justify-between items-center pt-2 border-t border-zinc-200 dark:border-zinc-700">
                 <span className="text-zinc-500 dark:text-zinc-400">建议下次串联复习</span>
                 <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                  约 {settlementStats.avgNextInterval.toFixed(1)} 天后
+                  {settlementStats.avgNextInterval <= 0
+                    ? "< 1 天（学习步进中）"
+                    : `约 ${settlementStats.avgNextInterval.toFixed(1)} 天后`}
                 </span>
               </div>
             </div>
@@ -694,6 +754,20 @@ export const SnowballView: React.FC<SnowballViewProps> = ({ initialArticleId, se
             </div>
           </div>
         </div>
+      )}
+
+      {/* 难词注音面板 */}
+      {showPhonetics && (
+        <PhoneticsPanel article={currentArticle} onClose={() => setShowPhonetics(false)} />
+      )}
+
+      {/* 理解大意卡片：高亮当前攻坚联所在段落 */}
+      {showUnderstanding && (
+        <UnderstandingCard
+          article={currentArticle}
+          highlightText={currentStage ? currentStage.newlyAddedUnit.text : undefined}
+          onClose={() => setShowUnderstanding(false)}
+        />
       )}
     </div>
   );

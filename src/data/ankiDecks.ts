@@ -81,7 +81,7 @@ export const SPECIAL_DECKS: VolumeDeck[] = [
     id: "DECK_GAOKAO72",
     name: "★ 高考必背 72 篇专项",
     shortName: "高考必背72",
-    subtitle: "教育部新高考命题超高频核心背诵篇目",
+    subtitle: "课标 72 篇中本库已收录的必背篇目",
     category: "SPECIAL",
     badge: "高考真题",
     moduleIds: [],

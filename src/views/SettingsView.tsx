@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { sound } from "../sound/audioSynthesizer";
-import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting, getSetting } from "../storage/db";
+import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting, getSetting, importAllProgress, BackupData } from "../storage/db";
+import { getFsrsSettings, saveFsrsSettings } from "../domain/fsrs/fsrsEngine";
+import { ankiScheduler } from "../domain/fsrs/ankiScheduler";
+import { getLocalDateString } from "../utils/date";
 import { AppTheme, toggleTheme } from "../utils/theme";
 import { useLastSession, formatRelativeTime } from "../storage/sessionTracker";
 import {
   Settings as SettingsIcon,
   Sliders,
   Download,
+  Upload,
   Trash2,
   CheckCircle2,
   AlertTriangle,
@@ -30,10 +34,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [autoResume, setAutoResume] = useState<boolean>(false);
+  const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { lastSession, clearSession } = useLastSession();
 
   useEffect(() => {
     getSetting<boolean>("auto_resume_on_startup", false).then(setAutoResume);
+    getFsrsSettings().then(s => {
+      setRetention(s.requestRetention);
+      setFactor(s.recitationStabilityFactor);
+    });
+    ankiScheduler.getSettings().then(s => {
+      setDailyNewLimit(s.dailyNewLimit);
+      setDailyReviewLimit(s.dailyReviewLimit);
+    });
   }, []);
 
   const handleToggleAutoResume = (val: boolean) => {
@@ -41,11 +55,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
     setSetting("auto_resume_on_startup", val);
   };
 
-  const handleSaveSettings = () => {
-    setSetting("fsrs_retention", retention);
-    setSetting("fsrs_factor", factor);
-    setSetting("daily_new_limit", dailyNewLimit);
-    setSetting("daily_review_limit", dailyReviewLimit);
+  const handleSaveSettings = async () => {
+    await saveFsrsSettings({
+      requestRetention: retention,
+      recitationStabilityFactor: factor
+    });
+    const existing = await ankiScheduler.getSettings();
+    await ankiScheduler.saveSettings({
+      ...existing,
+      dailyNewLimit,
+      dailyReviewLimit
+    });
 
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
@@ -65,9 +85,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `wenyan_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `wenyan_backup_${getLocalDateString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as BackupData;
+      const result = await importAllProgress(parsed);
+      setImportStatus({
+        type: "success",
+        message: `恢复成功：已导入 ${result.cardsImported} 张卡片进度与 ${result.recordsImported} 条打卡记录`
+      });
+    } catch (err) {
+      setImportStatus({
+        type: "error",
+        message: err instanceof Error ? `导入失败：${err.message}` : "导入失败：JSON 文件格式无效"
+      });
+    }
   };
 
   const handleReset = async () => {
@@ -78,8 +119,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
   };
 
   const handleTestSound = () => {
+    const wasEnabled = sound.enabled;
     sound.enabled = true;
     sound.playCorrect();
+    sound.enabled = wasEnabled;
   };
 
   return (
@@ -289,14 +332,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
           本地数据管理
         </h2>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleExportData}
-            className="flex-1 py-2 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-center gap-1.5 transition-colors"
+            className="flex-1 min-w-[130px] py-2 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-center gap-1.5 transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
             <span>导出备份 JSON</span>
           </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 min-w-[130px] py-2 px-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>导入恢复 JSON</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportData}
+            className="hidden"
+          />
 
           <button
             onClick={() => setShowResetConfirm(true)}
@@ -306,6 +364,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onT
             <span>重置数据</span>
           </button>
         </div>
+
+        {importStatus && (
+          <div
+            className={`p-2.5 rounded-xl text-xs flex items-center gap-1.5 ${
+              importStatus.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900"
+                : "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900"
+            }`}
+          >
+            {importStatus.type === "success" ? (
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span>{importStatus.message}</span>
+          </div>
+        )}
       </div>
 
       {/* Reset Confirmation Dialog */}

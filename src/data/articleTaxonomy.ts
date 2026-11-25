@@ -65,7 +65,7 @@ export function getCurricularTiers(): CurricularTier[] {
       title: "核心备考分类",
       description: "高考核心课标与全套教材",
       options: [
-        { id: "GAOKAO72", name: "高考必背 72 篇", count: gaokaoCount, description: "高考命题超高频经典重点必背", isPopular: true },
+        { id: "GAOKAO72", name: "高考必背 72 篇", count: gaokaoCount, description: "课标 72 篇中本库已收录的必背篇目", isPopular: true },
         { id: "ALL", name: "全 11 册教材全部篇目", count: ALL_ARTICLES.length, description: "包含课文及诵读全量 100 篇" },
         { id: "BX_ALL", name: "必修全套 (36篇)", count: bxCount, description: "高一必修上/下册全部课内必学篇目" },
         { id: "XB_ALL", name: "选择性必修全套 (35篇)", count: xbCount, description: "高二/高三选必上/中/下册选修提高篇目" },

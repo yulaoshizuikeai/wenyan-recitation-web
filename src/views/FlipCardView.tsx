@@ -9,19 +9,28 @@ import {
   getArticlesForDeck,
   getVolumeForArticle
 } from "../data/ankiDecks";
-import { FSRSEngine } from "../domain/fsrs/fsrsEngine";
+import {
+  FSRSEngine,
+  FsrsSettings,
+  DEFAULT_FSRS_SETTINGS,
+  getFsrsSettings,
+  createFsrsEngine
+} from "../domain/fsrs/fsrsEngine";
 import { CardFsrsState, Rating, CardState } from "../domain/fsrs/fsrsTypes";
 import {
   ankiScheduler,
   SchedulerSettings,
   DEFAULT_SCHEDULER_SETTINGS,
-  DailySchedulePlan
+  DailySchedulePlan,
+  shuffleArray
 } from "../domain/fsrs/ankiScheduler";
+import { getLocalDateString } from "../utils/date";
 import { getCardState, saveCardState, recordReviewLog, getAllCardStates, getDailyRecords } from "../storage/db";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import { AnkiDeckHub } from "../components/AnkiDeckHub";
+import { StudySidebar } from "../components/StudySidebar";
 import { NavView } from "../components/Navbar";
 import {
   RotateCw,
@@ -58,7 +67,13 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
   resumeExtra,
   onOpenArticleInView
 }) => {
-  const fsrs = useMemo(() => new FSRSEngine(), []);
+  const [fsrsSettings, setFsrsSettings] = useState<FsrsSettings>(DEFAULT_FSRS_SETTINGS);
+
+  useEffect(() => {
+    Promise.resolve(getFsrsSettings()).then(setFsrsSettings);
+  }, []);
+
+  const fsrs = useMemo<FSRSEngine>(() => createFsrsEngine(fsrsSettings), [fsrsSettings]);
 
   // Scheduler settings state
   const [schedulerSettings, setSchedulerSettings] = useState<SchedulerSettings>(DEFAULT_SCHEDULER_SETTINGS);
@@ -138,7 +153,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
   }, [refreshCardStates]);
 
   const now = Date.now();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   const todayRecord = useMemo(() => {
     return dailyRecords.find(r => r.date === todayStr) || { date: todayStr, count: 0, newLearned: 0 };
   }, [dailyRecords, todayStr]);
@@ -285,7 +300,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
       const art = ALL_ARTICLES.find(a => a.id === selectedArticleId);
       setSessionCards(art ? flashcardCache.getCardsForArticle(art) : []);
     } else if (mode === "random") {
-      const shuffled = [...allCards].sort(() => 0.5 - Math.random());
+      const shuffled = shuffleArray(allCards);
       setSessionCards(shuffled.slice(0, 25));
     }
   };
@@ -371,14 +386,16 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
 
     setCompletedCount(prev => prev + 1);
 
+    const willRequeue = rating === Rating.AGAIN && schedulerSettings.enableSessionLoop;
+
     // Anki Same-Session Loop: If user rated AGAIN and session loop is enabled, reinsert card
-    if (rating === Rating.AGAIN && schedulerSettings.enableSessionLoop) {
+    if (willRequeue) {
       setSessionCards(prevQueue => {
         return ankiScheduler.requeueFailedCard(prevQueue, currentIndex, currentFlashcard, 4);
       });
     }
 
-    if (currentIndex + 1 >= sessionCards.length) {
+    if (!willRequeue && currentIndex + 1 >= sessionCards.length) {
       sound.playCelebration();
       fireConfetti();
       setSessionFinished(true);
@@ -393,8 +410,9 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
     if (viewMode !== "study") return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
 
-      if (e.code === "Space") {
+      if (e.code === "Space" || ((e.code === "Enter" || e.code === "NumpadEnter") && !isFlipped)) {
         e.preventDefault();
         handleFlip();
       } else if (isFlipped) {
@@ -428,7 +446,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
   const remainingInSession = Math.max(0, sessionCards.length - currentIndex);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-5 pb-24">
+    <div className="max-w-4xl xl:max-w-6xl mx-auto px-4 py-5 pb-24">
       {/* View Mode 1: Anki Deck Hub (选册牌组列表与智能排程总览) */}
       {viewMode === "deck_hub" && (
         <AnkiDeckHub
@@ -438,12 +456,15 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
           dailyPlan={dailyPlan}
           onStartStudyDeck={handleStartStudyDeck}
           onOpenArticleInView={onOpenArticleInView}
+          activeArticleId={activeArticleId}
+          activeDeckId={activeDeckId}
         />
       )}
 
       {/* View Mode 2: Anki Study Session (卡片背诵模式) */}
       {viewMode === "study" && (
-        <div className="max-w-xl mx-auto">
+        <div className="max-w-xl xl:max-w-none xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
+          <div className="min-w-0">
           {/* Top Breadcrumb & Deck Return Header */}
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-zinc-200 dark:border-zinc-800 text-xs">
             <button
@@ -685,7 +706,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
                 className="perspective-1000 min-h-[300px] sm:min-h-[340px] cursor-pointer mb-5 select-none"
               >
                 <div
-                  className={`relative w-full h-full min-h-[300px] sm:min-h-[340px] rounded-2xl p-6 sm:p-8 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm transition-all duration-300 transform-style-preserve-3d flex flex-col justify-between ${
+                  className={`relative w-full h-full min-h-[300px] sm:min-h-[340px] rounded-2xl p-6 sm:p-8 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm transition-all duration-300 transform-style-3d flex flex-col justify-between ${
                     isFlipped ? "rotate-y-180" : ""
                   }`}
                 >
@@ -814,6 +835,33 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
               )}
             </>
           )}
+          </div>
+
+          <StudySidebar
+            article={
+              activeArticleObj
+                ? {
+                    title: activeArticleObj.title,
+                    author: activeArticleObj.author,
+                    dynasty: activeArticleObj.dynasty,
+                    genre: activeArticleObj.genre,
+                    isGaoKao72: activeArticleObj.isGaoKao72
+                  }
+                : undefined
+            }
+            progressLabel={`第 ${currentIndex + 1} / ${Math.max(1, sessionCards.length)} 张`}
+            progressPercent={
+              sessionCards.length > 0 ? ((currentIndex + 1) / sessionCards.length) * 100 : 0
+            }
+            shortcuts={[
+              { keys: "Space", label: "翻开卡片" },
+              { keys: "1", label: "重来（完全忘了）" },
+              { keys: "2", label: "困难" },
+              { keys: "3", label: "良好" },
+              { keys: "4", label: "简单（一眼就会）" }
+            ]}
+            hint="凭第一反应评分，不要凭「刚才看过」的感觉。评低一点，明天才会真的再见到它。"
+          />
         </div>
       )}
     </div>

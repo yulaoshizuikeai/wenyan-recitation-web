@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Article, ALL_ARTICLES } from "../data/curriculumData";
 import {
   VOLUME_DECKS,
@@ -6,7 +6,8 @@ import {
   VolumeDeck,
   computeDeckStats,
   DeckCardStats,
-  getArticlesForDeck
+  getArticlesForDeck,
+  getVolumeForArticle
 } from "../data/ankiDecks";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
 import { SchedulerSettings, DailySchedulePlan } from "../domain/fsrs/ankiScheduler";
@@ -38,6 +39,46 @@ interface AnkiDeckHubProps {
   dailyPlan: DailySchedulePlan;
   onStartStudyDeck: (deckId: string, articleId?: string) => void;
   onOpenArticleInView?: (articleId: string, view: NavView) => void;
+  activeArticleId?: string;
+  activeDeckId?: string;
+}
+
+const EXPANDED_DECKS_STORAGE_KEY = "wenyan_anki_expanded_decks";
+
+function getStoredExpandedDecks(activeArticleId?: string, activeDeckId?: string): Set<string> {
+  const set = new Set<string>();
+
+  // 1. Load user's saved expanded decks from localStorage
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = localStorage.getItem(EXPANDED_DECKS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(id => {
+            if (typeof id === "string") set.add(id);
+          });
+        }
+      }
+    } catch {
+      // Ignore JSON parse errors
+    }
+  }
+
+  // 2. If there is an active article or deck from current/previous study, ensure its volume is expanded
+  if (activeArticleId) {
+    const vol = getVolumeForArticle(activeArticleId);
+    if (vol) set.add(vol.id);
+  } else if (activeDeckId && activeDeckId.startsWith("VOL_")) {
+    set.add(activeDeckId);
+  }
+
+  // 3. Fallback: if user has no saved history, default to VOL_BX1
+  if (set.size === 0) {
+    set.add("VOL_BX1");
+  }
+
+  return set;
 }
 
 export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
@@ -46,10 +87,42 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
   onUpdateSettings,
   dailyPlan,
   onStartStudyDeck,
-  onOpenArticleInView
+  onOpenArticleInView,
+  activeArticleId,
+  activeDeckId
 }) => {
-  // Expanded volume deck IDs
-  const [expandedDecks, setExpandedDecks] = useState<Set<string>>(() => new Set(["VOL_BX1"]));
+  // Expanded volume deck IDs (restored from previous session / localStorage)
+  const [expandedDecks, setExpandedDecks] = useState<Set<string>>(() =>
+    getStoredExpandedDecks(activeArticleId, activeDeckId)
+  );
+
+  // Sync expanded deck when activeArticleId or activeDeckId changes
+  useEffect(() => {
+    let targetVolId: string | undefined;
+    if (activeArticleId) {
+      const vol = getVolumeForArticle(activeArticleId);
+      targetVolId = vol?.id;
+    } else if (activeDeckId && activeDeckId.startsWith("VOL_")) {
+      targetVolId = activeDeckId;
+    }
+
+    if (targetVolId) {
+      setExpandedDecks(prev => {
+        if (!prev.has(targetVolId!)) {
+          const next = new Set(prev);
+          next.add(targetVolId!);
+          if (typeof window !== "undefined" && window.localStorage) {
+            try {
+              localStorage.setItem(EXPANDED_DECKS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+            } catch {}
+          }
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [activeArticleId, activeDeckId]);
+
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempSettings, setTempSettings] = useState<SchedulerSettings>(schedulerSettings);
@@ -64,6 +137,11 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
         next.delete(deckId);
       } else {
         next.add(deckId);
+      }
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          localStorage.setItem(EXPANDED_DECKS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {}
       }
       return next;
     });

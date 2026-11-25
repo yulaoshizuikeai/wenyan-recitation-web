@@ -3,6 +3,7 @@ import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scena
 import { ALL_ARTICLES } from "../data/curriculumData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
+import { StudySidebar } from "../components/StudySidebar";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import {
   HelpCircle,
@@ -12,7 +13,8 @@ import {
   AlertCircle,
   Layers,
   ChevronRight,
-  X
+  X,
+  Trophy
 } from "lucide-react";
 
 interface DiffChar {
@@ -45,12 +47,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
     }
   }, [resumeExtra]);
 
+  const [wrongQuestionIndices, setWrongQuestionIndices] = useState<number[] | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
+
+  const activeQuestions = useMemo(() => {
+    if (!wrongQuestionIndices) return GAOKAO_SCENARIO_QUESTIONS;
+    return wrongQuestionIndices
+      .map(idx => GAOKAO_SCENARIO_QUESTIONS[idx])
+      .filter(Boolean);
+  }, [wrongQuestionIndices]);
+
   // Keep currentIndex clamped in bounds
   useEffect(() => {
-    if (currentIndex >= GAOKAO_SCENARIO_QUESTIONS.length && GAOKAO_SCENARIO_QUESTIONS.length > 0) {
-      setCurrentIndex(GAOKAO_SCENARIO_QUESTIONS.length - 1);
+    if (currentIndex >= activeQuestions.length && activeQuestions.length > 0) {
+      setCurrentIndex(activeQuestions.length - 1);
     }
-  }, [currentIndex]);
+  }, [currentIndex, activeQuestions.length]);
 
   const [userInput, setUserInput] = useState("");
   const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
@@ -58,11 +70,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
   const [answeredMap, setAnsweredMap] = useState<Map<number, boolean>>(new Map()); // index -> isCorrect
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
 
-  const currentQ: GaoKaoScenarioQuestion = GAOKAO_SCENARIO_QUESTIONS[currentIndex] || GAOKAO_SCENARIO_QUESTIONS[0];
+  const currentQ: GaoKaoScenarioQuestion = activeQuestions[currentIndex] || activeQuestions[0] || GAOKAO_SCENARIO_QUESTIONS[0];
 
   // Synchronize session tracker
   useEffect(() => {
-    if (!currentQ) return;
+    if (!currentQ || wrongQuestionIndices !== null) return;
     const relatedArticle = ALL_ARTICLES.find(a => a.id === currentQ.articleId);
     saveLastSession({
       view: "scenario",
@@ -79,7 +91,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
         totalCards: GAOKAO_SCENARIO_QUESTIONS.length
       }
     });
-  }, [currentIndex, currentQ]);
+  }, [currentIndex, currentQ, wrongQuestionIndices]);
 
   // Character-by-character diff engine
   const diffResult = useMemo<DiffChar[]>(() => {
@@ -132,27 +144,97 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
   };
 
   const handleNext = () => {
-    if (currentIndex + 1 < GAOKAO_SCENARIO_QUESTIONS.length) {
+    if (currentIndex + 1 < activeQuestions.length) {
       setCurrentIndex(prev => prev + 1);
     } else {
       sound.playCelebration();
       fireConfetti();
-      setCurrentIndex(0);
+      setIsCompleted(true);
     }
     setUserInput("");
     setIsAnswerRevealed(false);
     setIsEvaluated(false);
   };
 
+  const handleRestartAll = () => {
+    setWrongQuestionIndices(null);
+    setCurrentIndex(0);
+    setAnsweredMap(new Map());
+    setUserInput("");
+    setIsAnswerRevealed(false);
+    setIsEvaluated(false);
+    setIsCompleted(false);
+    setHasRestoredNotice(false);
+  };
+
+  const wrongIndices = useMemo(() => {
+    const list: number[] = [];
+    answeredMap.forEach((isCorrect, idx) => {
+      if (!isCorrect) {
+        const globalIdx = wrongQuestionIndices ? wrongQuestionIndices[idx] : idx;
+        if (globalIdx !== undefined) list.push(globalIdx);
+      }
+    });
+    return list;
+  }, [answeredMap, wrongQuestionIndices]);
+
+  const handleRetryWrong = () => {
+    if (wrongIndices.length === 0) return;
+    setWrongQuestionIndices(wrongIndices);
+    setCurrentIndex(0);
+    setAnsweredMap(new Map());
+    setUserInput("");
+    setIsAnswerRevealed(false);
+    setIsEvaluated(false);
+    setIsCompleted(false);
+    setHasRestoredNotice(false);
+  };
+
   const insertPunctuation = (punct: string) => {
     setUserInput(prev => prev + punct);
   };
 
+  // PC 键盘操作：Ctrl/Cmd + Enter 在输入框内提交，Enter 在卡片区提交或进入下一题
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const inInput =
+        e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        if (!isAnswerRevealed && userInput.trim()) {
+          e.preventDefault();
+          handleVerify();
+        }
+        return;
+      }
+
+      if (inInput || showQuestionDrawer || isCompleted) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+      if (e.code === "Enter" || e.code === "NumpadEnter") {
+        if (!isAnswerRevealed) {
+          if (!userInput.trim()) return;
+          e.preventDefault();
+          handleVerify();
+        } else {
+          e.preventDefault();
+          handleNext();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isAnswerRevealed, userInput, showQuestionDrawer, isCompleted]);
+
   const totalAnswered = answeredMap.size;
   const correctCount = Array.from(answeredMap.values()).filter(Boolean).length;
+  const accuracyPercent = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-5 pb-24">
+      <div className="max-w-2xl xl:max-w-5xl mx-auto px-4 py-5 pb-24">
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
+      <div className="min-w-0">
       {/* Header Bar */}
       <div className="flex items-center justify-between mb-4 text-xs">
         <button
@@ -160,14 +242,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors font-medium"
         >
           <Layers className="w-3.5 h-3.5 text-zinc-500" />
-          <span>题号索引：第 {currentIndex + 1} / {GAOKAO_SCENARIO_QUESTIONS.length} 题</span>
+          <span>题号索引：第 {currentIndex + 1} / {activeQuestions.length} 题</span>
           <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />
         </button>
 
         <div className="text-zinc-500 dark:text-zinc-400 font-mono">
           已答 {totalAnswered} 题 ｜ 正确率：
           <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-            {totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0}%
+            {accuracyPercent}%
           </span>
         </div>
       </div>
@@ -203,7 +285,43 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
         </div>
       )}
 
-      {/* Main Question Card */}
+      {/* Completion Summary Card or Main Question Card */}
+      {isCompleted ? (
+        <div className="py-10 px-6 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs space-y-5 animate-in zoom-in-95 duration-150">
+          <div className="w-12 h-12 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 flex items-center justify-center mx-auto">
+            <Trophy className="w-6 h-6 text-amber-500" />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              {wrongQuestionIndices ? "错题专练完成！" : "本轮高考情境默写完成！"}
+            </h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+              共作答 <strong>{totalAnswered}</strong> 题，正确 <strong>{correctCount}</strong> 题，正确率{" "}
+              <strong className="text-zinc-900 dark:text-zinc-100">{accuracyPercent}%</strong>
+              {wrongIndices.length > 0 && `，错题 ${wrongIndices.length} 道`}
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2.5 justify-center pt-1">
+            <button
+              onClick={handleRestartAll}
+              className="py-2.5 px-5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold text-xs hover:bg-zinc-800 dark:hover:bg-white flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>重新刷一遍</span>
+            </button>
+            {wrongIndices.length > 0 && (
+              <button
+                onClick={handleRetryWrong}
+                className="py-2.5 px-5 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 font-semibold text-xs hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+              >
+                仅重做错题 ({wrongIndices.length})
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 shadow-xs space-y-5 transition-colors">
         <div>
           <div className="flex items-center gap-2 text-xs mb-2">
@@ -348,11 +466,30 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
               onClick={handleNext}
               className="w-full py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold text-xs flex items-center justify-center gap-1 transition-all active:scale-[0.98]"
             >
-              <span>下一题</span>
+              <span>{currentIndex + 1 < activeQuestions.length ? "下一题" : "完成本轮"}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
+      </div>
+      )}
+
+      </div>
+
+      <StudySidebar
+        article={{
+          title: currentQ.articleTitle,
+          author: currentQ.author
+        }}
+        progressLabel={`第 ${currentIndex + 1} / ${activeQuestions.length} 题`}
+        progressPercent={((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100}
+        shortcuts={[
+          { keys: "Enter", label: "提交核对 / 下一题" },
+          { keys: "Ctrl + Enter", label: "输入框内直接提交" }
+        ]}
+        hint="先自己默写完整，再看逐字比对。标红的字是真写错，黄色「缺」是漏字，抄一遍比读三遍管用。"
+      />
+
       </div>
 
       {/* Question Index Palette Drawer */}
@@ -363,7 +500,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
               <div>
                 <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">题目快速跳转</h3>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  共 {GAOKAO_SCENARIO_QUESTIONS.length} 道历年高考情境真题
+                  共 {activeQuestions.length} 道{wrongQuestionIndices ? "错题专练" : "历年高考情境真题"}
                 </p>
               </div>
               <button
@@ -375,7 +512,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
             </div>
 
             <div className="p-4 grid grid-cols-6 sm:grid-cols-8 gap-2 overflow-y-auto flex-1">
-              {GAOKAO_SCENARIO_QUESTIONS.map((q, idx) => {
+              {activeQuestions.map((q, idx) => {
                 const isCurrent = idx === currentIndex;
                 const hasAnswered = answeredMap.has(idx);
                 const isCorrect = answeredMap.get(idx);

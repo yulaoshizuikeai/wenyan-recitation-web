@@ -31,6 +31,18 @@ export interface DailySchedulePlan {
   todayReviewedCount: number;
 }
 
+/**
+ * Unbiased Fisher-Yates shuffle returning a new array.
+ */
+export function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 export class AnkiScheduler {
   private fsrs: FSRSEngine;
 
@@ -99,7 +111,7 @@ export class AnkiScheduler {
 
     let selectedNewCards = newList;
     if (settings.cardOrder === "random") {
-      selectedNewCards = [...newList].sort(() => 0.5 - Math.random());
+      selectedNewCards = shuffleArray(newList);
     }
     // Sequential: keep natural textbook sequence
     const effectiveNew = selectedNewCards.slice(0, remainingNewQuota);

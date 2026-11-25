@@ -1,5 +1,6 @@
 import React from "react";
 import { Zap, Clock } from "lucide-react";
+import { getLocalDateString } from "../utils/date";
 
 interface HeatmapProps {
   records: { date: string; count: number }[];
@@ -21,7 +22,7 @@ export const Heatmap: React.FC<HeatmapProps> = ({ records, streak, totalReviews 
   for (let i = numDays - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = getLocalDateString(d);
     const count = recordMap.get(dateStr) || 0;
     days.push({
       dateStr,

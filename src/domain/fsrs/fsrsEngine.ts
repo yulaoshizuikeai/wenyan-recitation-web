@@ -1,4 +1,17 @@
 import { CardFsrsState, CardState, NextStateResult, Rating, ReviewLog } from "./fsrsTypes";
+import { getSetting, setSetting } from "../../storage/db";
+
+export interface FsrsSettings {
+  requestRetention: number;
+  recitationStabilityFactor: number;
+}
+
+export const DEFAULT_FSRS_SETTINGS: FsrsSettings = {
+  requestRetention: 0.93,
+  recitationStabilityFactor: 0.72
+};
+
+const FSRS_SETTINGS_KEY = "fsrs_settings";
 
 export const DEFAULT_FSRS_5_WEIGHTS = [
   0.40255,  // w0:  S0(Again)
@@ -158,10 +171,7 @@ export class FSRSEngine {
       const evalRes = this.evaluateReview(card, rating, nowMillis);
       const updatedCard = evalRes.updatedCard;
       if (updatedCard.state === CardState.LEARNING || updatedCard.state === CardState.RELEARNING) {
-        let stepDelay = this.learningSteps[0] || 60_000;
-        if (rating === Rating.AGAIN) stepDelay = this.learningSteps[0] || 60_000;
-        else if (rating === Rating.HARD) stepDelay = Math.floor((this.learningSteps[0] || 60_000) * 1.5);
-        else stepDelay = this.learningSteps[1] || 600_000;
+        const stepDelay = Math.max(60_000, updatedCard.dueTime - nowMillis);
         result[rating] = this.formatDurationBadge(stepDelay);
       } else if (updatedCard.state === CardState.REVIEW) {
         result[rating] = this.formatIntervalBadge(updatedCard.scheduledDays);
@@ -380,4 +390,29 @@ export class FSRSEngine {
       nextIntervalDays: scheduledDays
     };
   }
+}
+
+export async function getFsrsSettings(): Promise<FsrsSettings> {
+  const saved = await getSetting<Partial<FsrsSettings> | null>(FSRS_SETTINGS_KEY, null);
+  return {
+    ...DEFAULT_FSRS_SETTINGS,
+    ...(saved || {})
+  };
+}
+
+export async function saveFsrsSettings(settings: FsrsSettings): Promise<void> {
+  await setSetting(FSRS_SETTINGS_KEY, settings);
+}
+
+export function createFsrsEngine(settings?: Partial<FsrsSettings>): FSRSEngine {
+  const retention = settings?.requestRetention ?? DEFAULT_FSRS_SETTINGS.requestRetention;
+  const factor = settings?.recitationStabilityFactor ?? DEFAULT_FSRS_SETTINGS.recitationStabilityFactor;
+  return new FSRSEngine(
+    [...DEFAULT_FSRS_5_WEIGHTS],
+    retention,
+    36500,
+    [60_000, 600_000],
+    [600_000],
+    factor
+  );
 }

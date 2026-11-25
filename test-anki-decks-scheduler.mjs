@@ -33,10 +33,13 @@ assert.ok(deckHubSrc.includes("VOLUME_DECKS"), "AnkiDeckHub.tsx must use VOLUME_
 assert.ok(deckHubSrc.includes("text-sky-600"), "AnkiDeckHub.tsx must use Anki blue for new cards");
 assert.ok(deckHubSrc.includes("text-red-600"), "AnkiDeckHub.tsx must use Anki red for learn cards");
 assert.ok(deckHubSrc.includes("text-emerald-600"), "AnkiDeckHub.tsx must use Anki green for due cards");
-console.log("   ✓ AnkiDeckHub.tsx renders authentic Anki UI with triple counters and expandable tree");
+assert.ok(deckHubSrc.includes("EXPANDED_DECKS_STORAGE_KEY"), "AnkiDeckHub.tsx must persist expanded decks");
+assert.ok(deckHubSrc.includes("getStoredExpandedDecks"), "AnkiDeckHub.tsx must restore expanded decks from history");
+console.log("   ✓ AnkiDeckHub.tsx renders authentic Anki UI and restores user's expanded decks");
 
 const flipCardSrc = readFileSync("./src/views/FlipCardView.tsx", "utf-8");
 assert.ok(flipCardSrc.includes("AnkiDeckHub"), "FlipCardView.tsx must integrate AnkiDeckHub");
+assert.ok(flipCardSrc.includes("activeArticleId={activeArticleId}"), "FlipCardView.tsx must pass activeArticleId to AnkiDeckHub");
 assert.ok(flipCardSrc.includes("viewMode"), "FlipCardView.tsx must support deck_hub and study viewModes");
 assert.ok(flipCardSrc.includes("ankiScheduler"), "FlipCardView.tsx must use ankiScheduler");
 assert.ok(flipCardSrc.includes("requeueFailedCard"), "FlipCardView.tsx must re-queue failed cards on AGAIN");
@@ -112,6 +115,45 @@ console.log("   ✓ Priority order strictly enforced: Learn -> Due Reviews -> Ne
 const planB = buildDailyPlanMock(mockDue, mockLearn, mockNew, { dailyNewLimit: 20, dailyReviewLimit: 100 }, 15);
 assert.strictEqual(planB.new.length, 5, "Remaining new quota correctly adjusted by todayNewLearned (20 - 15 = 5)");
 console.log("   ✓ Daily new cards correctly respect today's already learned progress");
+
+// 4. Test expanded decks memory and continuity
+console.log("\n4. Testing Expanded Decks Memory & Active Article Continuity...");
+function getStoredExpandedDecksMock(localStorageStore, activeVolId) {
+  const set = new Set();
+  const raw = localStorageStore["wenyan_anki_expanded_decks"];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) parsed.forEach(id => set.add(id));
+    } catch {}
+  }
+  if (activeVolId) {
+    set.add(activeVolId);
+  }
+  if (set.size === 0) {
+    set.add("VOL_BX1");
+  }
+  return set;
+}
+
+const emptyStore = {};
+const coldStart = getStoredExpandedDecksMock(emptyStore, null);
+assert.deepStrictEqual(Array.from(coldStart), ["VOL_BX1"], "Cold start with no history defaults to VOL_BX1");
+
+// User previously expanded VOL_XB2 and VOL_XX
+const userSavedStore = {
+  wenyan_anki_expanded_decks: JSON.stringify(["VOL_XB2", "VOL_XX"])
+};
+const restoredDecks = getStoredExpandedDecksMock(userSavedStore, null);
+assert.ok(restoredDecks.has("VOL_XB2"), "Restores user's previous expansion VOL_XB2");
+assert.ok(restoredDecks.has("VOL_XX"), "Restores user's previous expansion VOL_XX");
+assert.ok(!restoredDecks.has("VOL_BX1"), "Does not force VOL_BX1 when user had other decks open");
+
+// If active article is from VOL_XB1, ensure VOL_XB1 is included along with user's saved expansions
+const withActiveArt = getStoredExpandedDecksMock(userSavedStore, "VOL_XB1");
+assert.ok(withActiveArt.has("VOL_XB1"), "Active article volume is guaranteed to be expanded");
+assert.ok(withActiveArt.has("VOL_XB2"), "Keeps user previous expanded volume VOL_XB2");
+console.log("   ✓ Expanded decks state accurately restored from localStorage without forcing VOL_BX1");
 
 console.log("\n=====================================================");
 console.log("=== All Anki Decks & Scheduler Tests Passed Successfully! ===");

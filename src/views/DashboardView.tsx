@@ -7,6 +7,7 @@ import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
 import { NavView } from "../components/Navbar";
 import { useLastSession, LastSessionState } from "../storage/sessionTracker";
 import { PickUpCard } from "../components/PickUpCard";
+import { getLocalDateString } from "../utils/date";
 import {
   Layers,
   Sparkles,
@@ -86,10 +87,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const streak = useMemo(() => {
     if (dailyRecords.length === 0) return 0;
     const sorted = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getLocalDateString();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yestStr = yesterday.toISOString().slice(0, 10);
+    const yestStr = getLocalDateString(yesterday);
 
     const hasToday = sorted.some(r => r.date === todayStr && r.count > 0);
     const hasYest = sorted.some(r => r.date === yestStr && r.count > 0);
@@ -104,7 +105,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     const set = new Set(sorted.filter(r => r.count > 0).map(r => r.date));
     while (true) {
-      const dStr = checkDate.toISOString().slice(0, 10);
+      const dStr = getLocalDateString(checkDate);
       if (set.has(dStr)) {
         count++;
         checkDate.setDate(checkDate.getDate() - 1);
@@ -203,7 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   : "bg-red-600 text-white hover:bg-red-700"
               }`}
             >
-              <Flame className="w-4 h-4 text-red-500" />
+              <Flame className={`w-4 h-4 ${lastSession ? "text-red-500" : "text-white"}`} />
               <span>考前抱佛脚 · 核心金句</span>
             </button>
 
@@ -318,8 +319,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             return (
               <div
                 key={volume.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard")}
-                className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer transition-all flex flex-col justify-between group"
+                onKeyDown={e => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard");
+                  }
+                }}
+                className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800/60 hover:shadow-2xs active:scale-[0.995] cursor-pointer transition-all flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -383,7 +392,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {recommendedArticles.map(article => (
             <div
               key={article.id}
-              className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col justify-between"
+              className="p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800/60 hover:shadow-2xs focus-within:border-zinc-400 dark:focus-within:border-zinc-600 transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">

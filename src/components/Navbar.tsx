@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Volume2,
   VolumeX,
@@ -17,13 +17,26 @@ import {
   Search,
   Flame,
   RotateCcw,
-  ChevronRight
+  ChevronRight,
+  Keyboard
 } from "lucide-react";
 import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
 import { LastSessionState, NavView } from "../storage/sessionTracker";
 
 export type { NavView };
+
+/** 全局导航快捷键映射（Alt + 数字），App 与帮助面板共用同一份定义 */
+export const NAV_SHORTCUT_ORDER: { view: NavView; key: string; label: string }[] = [
+  { view: "dashboard", key: "1", label: "概览" },
+  { view: "snowball", key: "2", label: "长卷滚雪球" },
+  { view: "flipcard", key: "3", label: "牌组闪卡" },
+  { view: "cloze", key: "4", label: "渐进遮挡" },
+  { view: "cram", key: "5", label: "考前抱佛脚" },
+  { view: "scenario", key: "6", label: "高考默写" },
+  { view: "catalog", key: "7", label: "诗文典库" },
+  { view: "settings", key: "8", label: "设置" }
+];
 
 interface NavbarProps {
   currentView: NavView;
@@ -36,6 +49,7 @@ interface NavbarProps {
   onThemeChange: (theme: AppTheme) => void;
   lastSession?: LastSessionState | null;
   onResumeSession?: (session: LastSessionState) => void;
+  onShowShortcuts?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -48,7 +62,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   onThemeChange,
   lastSession,
-  onResumeSession
+  onResumeSession,
+  onShowShortcuts
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
@@ -56,6 +71,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [scopeSearchQuery, setScopeSearchQuery] = useState<string>("");
 
   const curricularTiers = useMemo(() => getCurricularTiers(), []);
+
+  // PC 侧：Esc 关闭教材范围弹层
+  useEffect(() => {
+    if (!isScopeModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsScopeModalOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isScopeModalOpen]);
 
   // Compute current scope label
   const currentScopeLabel = useMemo(() => {
@@ -77,15 +102,28 @@ export const Navbar: React.FC<NavbarProps> = ({
       .filter(o => o.name.toLowerCase().includes(q) || o.description.toLowerCase().includes(q));
   }, [curricularTiers, activeTierId, scopeSearchQuery]);
 
-  const navItems: { id: NavView; label: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "概览", icon: <BarChart2 className="w-4 h-4" /> },
-    { id: "cram", label: "考前抱佛脚", icon: <Flame className="w-4 h-4 text-red-500" /> },
-    { id: "snowball", label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
-    { id: "flipcard", label: "牌组闪卡", icon: <Sparkles className="w-4 h-4" /> },
-    { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-4 h-4" /> },
-    { id: "scenario", label: "高考默写", icon: <HelpCircle className="w-4 h-4" /> },
-    { id: "catalog", label: "诗文典库", icon: <BookOpen className="w-4 h-4" /> },
-    { id: "settings", label: "设置", icon: <SettingsIcon className="w-4 h-4" /> }
+  const shortcutOf = (view: NavView) =>
+    NAV_SHORTCUT_ORDER.find(s => s.view === view)?.key;
+
+  // PC 顶栏导航：按「背诵 / 冲刺资料」两组排布，设置单独收进右侧图标区
+  const navGroups: { id: string; items: { id: NavView; label: string; icon: React.ReactNode }[] }[] = [
+    {
+      id: "study",
+      items: [
+        { id: "dashboard", label: "概览", icon: <BarChart2 className="w-4 h-4" /> },
+        { id: "snowball", label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
+        { id: "flipcard", label: "牌组闪卡", icon: <Sparkles className="w-4 h-4" /> },
+        { id: "cloze", label: "渐进遮挡", icon: <Eye className="w-4 h-4" /> }
+      ]
+    },
+    {
+      id: "exam",
+      items: [
+        { id: "cram", label: "考前抱佛脚", icon: <Flame className="w-4 h-4 text-red-500" /> },
+        { id: "scenario", label: "高考默写", icon: <HelpCircle className="w-4 h-4" /> },
+        { id: "catalog", label: "诗文典库", icon: <BookOpen className="w-4 h-4" /> }
+      ]
+    }
   ];
 
   // Mobile Bottom Bar has 5 core items
@@ -129,25 +167,35 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Divider */}
             <div className="hidden lg:block w-px h-4 bg-zinc-200 dark:bg-zinc-700 shrink-0" />
 
-            {/* Desktop Navigation Tabs */}
+            {/* Desktop Navigation Tabs — 分组排布，lg 仅图标、xl 显示文字 */}
             <nav className="hidden lg:flex items-center gap-0.5 flex-1 min-w-0">
-              {navItems.map(item => {
-                const active = currentView === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleNavClick(item.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
-                      active
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
-                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+              {navGroups.map((group, groupIdx) => (
+                <React.Fragment key={group.id}>
+                  {groupIdx > 0 && (
+                    <div className="w-px h-4 mx-1 bg-zinc-200 dark:bg-zinc-700 shrink-0" />
+                  )}
+                  {group.items.map(item => {
+                    const active = currentView === item.id;
+                    const shortcut = shortcutOf(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleNavClick(item.id)}
+                        title={shortcut ? `${item.label}（Alt + ${shortcut}）` : item.label}
+                        aria-current={active ? "page" : undefined}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                          active
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950"
+                            : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        }`}
+                      >
+                        {item.icon}
+                        <span className="hidden xl:inline">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
             </nav>
 
             {/* Right Controls */}
@@ -178,6 +226,32 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Icon-only controls grouped with a hairline separator */}
               <div className="flex items-center gap-0.5 pl-1 border-l border-zinc-200 dark:border-zinc-700/80">
+                {/* Settings (moved out of the tab row) */}
+                <button
+                  onClick={() => handleNavClick("settings")}
+                  className={`hidden lg:inline-flex p-1.5 rounded-md transition-colors ${
+                    currentView === "settings"
+                      ? "text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800"
+                      : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                  title="设置（Alt + 8）"
+                  aria-label="设置"
+                >
+                  <SettingsIcon className="w-4 h-4" />
+                </button>
+
+                {/* Keyboard shortcut help */}
+                {onShowShortcuts && (
+                  <button
+                    onClick={onShowShortcuts}
+                    className="hidden lg:inline-flex p-1.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                    title="键盘快捷键（?）"
+                    aria-label="键盘快捷键"
+                  >
+                    <Keyboard className="w-4 h-4" />
+                  </button>
+                )}
+
                 {/* Theme Toggle */}
                 <button
                   onClick={handleThemeToggle}

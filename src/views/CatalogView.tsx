@@ -25,6 +25,8 @@ import {
 import { NavView } from "../components/Navbar";
 import { useLastSession, LastSessionState, saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { PickUpCard } from "../components/PickUpCard";
+import { UnderstandingCard } from "../components/UnderstandingCard";
+import { getRecommendedMode } from "../domain/recommend/modeRecommender";
 
 interface CatalogViewProps {
   initialArticleId?: string;
@@ -52,6 +54,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     }
     return null;
   });
+  const [understandingArticle, setUnderstandingArticle] = useState<Article | null>(null);
 
   const { lastSession, clearSession } = useLastSession();
 
@@ -383,14 +386,20 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                       >
                         <Layers className="w-3 h-3" />
                         <span>滚雪球</span>
+                        {getRecommendedMode(article).mode === "snowball" && (
+                          <span className="text-[9px] px-1 rounded bg-emerald-500 text-white leading-tight">荐</span>
+                        )}
                       </button>
 
                       <button
                         onClick={() => onOpenArticleInView(article.id, "cloze")}
-                        className="py-1 px-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        className="py-1 px-2 rounded-lg border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1"
                         title="渐进遮挡"
                       >
-                        遮挡
+                        <span>遮挡</span>
+                        {getRecommendedMode(article).mode === "cloze" && (
+                          <span className="text-[9px] px-1 rounded bg-emerald-500 text-white leading-tight">荐</span>
+                        )}
                       </button>
 
                       <button
@@ -456,6 +465,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 >
                   <Layers className="w-3.5 h-3.5" />
                   <span>滚雪球</span>
+                  {getRecommendedMode(article).mode === "snowball" && (
+                    <span className="text-[9px] px-1 rounded bg-emerald-500 text-white leading-tight">荐</span>
+                  )}
                 </button>
 
                 <button
@@ -464,6 +476,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>遮挡</span>
+                  {getRecommendedMode(article).mode === "cloze" && (
+                    <span className="text-[9px] px-1 rounded bg-emerald-500 text-white leading-tight">荐</span>
+                  )}
                 </button>
 
                 <button
@@ -503,6 +518,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 <div className="text-xs text-zinc-400 mt-0.5">
                   〔{readingArticle.dynasty}〕{readingArticle.author} · {readingArticle.genre}
                 </div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  {readingArticle.isGaoKao72
+                    ? `课标必背 · ${readingArticle.recitationScope === "FULL_TEXT" ? "全文" : readingArticle.recitationScope}`
+                    : "非课标必背篇目"}
+                </div>
               </div>
               <button
                 onClick={() => setReadingArticle(null)}
@@ -529,6 +549,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
             <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-end gap-2">
               <button
+                onClick={() => setUnderstandingArticle(readingArticle)}
+                className="py-1.5 px-3 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-1 transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>理解串讲</span>
+              </button>
+              <button
                 onClick={() => {
                   const id = readingArticle.id;
                   setReadingArticle(null);
@@ -554,6 +581,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* 理解大意卡片 */}
+      {understandingArticle && (
+        <UnderstandingCard
+          article={understandingArticle}
+          onClose={() => setUnderstandingArticle(null)}
+        />
       )}
     </div>
   );
