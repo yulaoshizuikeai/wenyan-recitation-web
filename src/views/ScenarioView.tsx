@@ -3,9 +3,15 @@ import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scena
 import { ALL_ARTICLES } from "../data/curriculumData";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
-import { StudySidebar } from "../components/StudySidebar";
-import { StudyToolbar } from "../components/StudyToolbar";
+import { StudyWorkspaceShell } from "../components/StudyWorkspaceShell";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
+import {
+  evaluateScenarioAnswer,
+  findFailedKeyPointIndices,
+  isScenarioMatch,
+  DiffSummary
+} from "../domain/scenario/diffEngine";
 import {
   HelpCircle,
   Check,
@@ -16,17 +22,13 @@ import {
   Trophy
 } from "lucide-react";
 
-interface DiffChar {
-  char: string;
-  expected?: string;
-  status: "correct" | "wrong" | "missing";
-}
-
 interface ScenarioViewProps {
   resumeExtra?: SessionExtra;
 }
 
-export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
+export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propResumeExtra }) => {
+  const appCtx = useOptionalStudyApp();
+  const resumeExtra = propResumeExtra ?? appCtx?.resumeExtra;
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (resumeExtra?.scenarioQuestionIndex !== undefined && resumeExtra.scenarioQuestionIndex > 0) {
       return Math.min(resumeExtra.scenarioQuestionIndex, Math.max(0, GAOKAO_SCENARIO_QUESTIONS.length - 1));
@@ -92,43 +94,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
     });
   }, [currentIndex, currentQ, wrongQuestionIndices]);
 
-  // Character-by-character diff engine
-  const diffResult = useMemo<DiffChar[]>(() => {
-    if (!isEvaluated) return [];
-
-    const normUser = userInput.replace(/[，。？！；：、“”‘’\s]/g, "");
-    const normAns = currentQ.answer.replace(/[，。？！；：、“”‘’\s]/g, "");
-
-    const diffs: DiffChar[] = [];
-    const maxLen = Math.max(normUser.length, normAns.length);
-
-    for (let i = 0; i < maxLen; i++) {
-      const uChar = normUser[i];
-      const aChar = normAns[i];
-
-      if (uChar && aChar) {
-        if (uChar === aChar) {
-          diffs.push({ char: uChar, status: "correct" });
-        } else {
-          diffs.push({ char: uChar, expected: aChar, status: "wrong" });
-        }
-      } else if (!uChar && aChar) {
-        diffs.push({ char: "_", expected: aChar, status: "missing" });
-      } else if (uChar && !aChar) {
-        diffs.push({ char: uChar, status: "wrong" });
-      }
-    }
-    return diffs;
+  // Character-by-character LCS / Levenshtein diff evaluation
+  const diffSummary = useMemo<DiffSummary | null>(() => {
+    if (!isEvaluated) return null;
+    return evaluateScenarioAnswer(userInput, currentQ.answer);
   }, [isEvaluated, userInput, currentQ.answer]);
+
+  const failedKeyPointSet = useMemo<Set<number>>(() => {
+    if (!isEvaluated || !diffSummary || diffSummary.isMatch) return new Set();
+    return new Set(findFailedKeyPointIndices(userInput, currentQ.answer, currentQ.keyPoints));
+  }, [isEvaluated, diffSummary, userInput, currentQ.answer, currentQ.keyPoints]);
 
   const handleVerify = () => {
     setIsEvaluated(true);
     setIsAnswerRevealed(true);
 
-    const normUser = userInput.replace(/[，。？！；：、“”‘’\s]/g, "");
-    const normAns = currentQ.answer.replace(/[，。？！；：、“”‘’\s]/g, "");
-
-    const isMatch = normUser === normAns;
+    const isMatch = isScenarioMatch(userInput, currentQ.answer);
     if (isMatch) {
       sound.playCorrect();
     } else {
@@ -193,11 +174,16 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
     setUserInput(prev => prev + punct);
   };
 
+  const isGlobalModalOpen = Boolean(appCtx?.showCommandPalette || appCtx?.showShortcuts);
+
   // PC 键盘操作：Ctrl/Cmd + Enter 在输入框内提交，Enter 在卡片区提交或进入下一题
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isGlobalModalOpen) return;
+
+      const target = e.target as HTMLElement | null;
       const inInput =
-        e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
+        Boolean(target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable));
 
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         if (!isAnswerRevealed && userInput.trim()) {
@@ -230,66 +216,85 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isAnswerRevealed, userInput, showQuestionDrawer, isCompleted]);
+  }, [isGlobalModalOpen, isAnswerRevealed, userInput, showQuestionDrawer, isCompleted]);
 
   const totalAnswered = answeredMap.size;
   const correctCount = Array.from(answeredMap.values()).filter(Boolean).length;
   const accuracyPercent = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+  const relatedArticle = useMemo(
+    () => ALL_ARTICLES.find(a => a.id === currentQ.articleId),
+    [currentQ.articleId]
+  );
 
   return (
-      <div className="max-w-2xl xl:max-w-6xl mx-auto px-6 py-5 pb-16 animate-fade-slide-up">
-      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_288px] xl:gap-6 xl:items-start">
-      <div className="min-w-0 space-y-4">
-      {/* Unified Study Toolbar */}
-      <StudyToolbar
-        modeLabel="高考默写"
-        modeIcon={<HelpCircle className="w-3.5 h-3.5" />}
-        title={currentQ ? `《${currentQ.articleTitle}》` : "情境默写"}
-        subtitle={currentQ?.author}
-        onSelectTitle={() => setShowQuestionDrawer(true)}
-        progressText={`第 ${currentIndex + 1} / ${activeQuestions.length} 题`}
-        progressPercent={((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100}
-        actions={
-          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400 px-1">
-            <span>已答 {totalAnswered}</span>
-            <span className="text-zinc-300 dark:text-zinc-700">|</span>
-            <span>
-              正确率 <strong className="text-zinc-900 dark:text-zinc-100">{accuracyPercent}%</strong>
-            </span>
-          </div>
+    <>
+      <StudyWorkspaceShell
+        containerClassName="max-w-2xl xl:max-w-6xl mx-auto px-6 py-5 pb-16 animate-fade-slide-up"
+        toolbarConfig={{
+          modeLabel: "高考默写",
+          modeIcon: <HelpCircle className="w-3.5 h-3.5" />,
+          title: currentQ ? `《${currentQ.articleTitle}》` : "情境默写",
+          subtitle: currentQ?.author,
+          onSelectTitle: () => setShowQuestionDrawer(true),
+          progressText: `第 ${currentIndex + 1} / ${activeQuestions.length} 题`,
+          progressPercent: ((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100,
+          actions: (
+            <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 dark:text-zinc-400 px-1">
+              <span>已答 {totalAnswered}</span>
+              <span className="text-zinc-300 dark:text-zinc-700">|</span>
+              <span>
+                正确率 <strong className="text-zinc-900 dark:text-zinc-100">{accuracyPercent}%</strong>
+              </span>
+            </div>
+          )
+        }}
+        topBanner={
+          hasRestoredNotice && currentIndex > 0 ? (
+            <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                <span>已接续高考默写进度至<strong>第 {currentIndex + 1} 题</strong>（共 {GAOKAO_SCENARIO_QUESTIONS.length} 题）</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setCurrentIndex(0);
+                    setUserInput("");
+                    setIsAnswerRevealed(false);
+                    setIsEvaluated(false);
+                    setHasRestoredNotice(false);
+                  }}
+                  className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>从第 1 题开始</span>
+                </button>
+                <button
+                  onClick={() => setHasRestoredNotice(false)}
+                  className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : undefined
         }
-      />
-
-      {/* Progress Restored Toast */}
-      {hasRestoredNotice && currentIndex > 0 && (
-        <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span>已接续高考默写进度至<strong>第 {currentIndex + 1} 题</strong>（共 {GAOKAO_SCENARIO_QUESTIONS.length} 题）</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setCurrentIndex(0);
-                setUserInput("");
-                setIsAnswerRevealed(false);
-                setIsEvaluated(false);
-                setHasRestoredNotice(false);
-              }}
-              className="text-[11px] font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-2 flex items-center gap-1"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>从第 1 题开始</span>
-            </button>
-            <button
-              onClick={() => setHasRestoredNotice(false)}
-              className="text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+        article={relatedArticle}
+        sidebarArticle={{
+          title: currentQ.articleTitle,
+          author: currentQ.author,
+          dynasty: relatedArticle?.dynasty,
+          genre: relatedArticle?.genre,
+          isGaoKao72: relatedArticle?.isGaoKao72
+        }}
+        sidebarProgressLabel={`第 ${currentIndex + 1} / ${activeQuestions.length} 题`}
+        sidebarProgressPercent={((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100}
+        sidebarShortcuts={[
+          { keys: "Enter", label: "提交核对 / 下一题" },
+          { keys: "Ctrl + Enter", label: "输入框内直接提交" }
+        ]}
+        sidebarHint="先自己默写完整，再看逐字比对。红字是错字，黄框「漏」是漏字，紫字「多」是多字，抄一遍比读三遍管用。"
+      >
 
       {/* Completion Summary Card or Main Question Card */}
       {isCompleted ? (
@@ -392,15 +397,44 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
         </div>
 
         {/* Character-by-Character Diff Output */}
-        {isEvaluated && diffResult.length > 0 && (
-          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/80 space-y-2 animate-in fade-in duration-150">
-            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">逐字比对诊断：</div>
-            <div className="flex flex-wrap gap-1.5 text-lg font-classical">
-              {diffResult.map((d, idx) => {
+        {isEvaluated && diffSummary && diffSummary.diffs.length > 0 && (
+          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700/80 space-y-2.5 animate-in fade-in duration-150">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+              <span className="font-medium">逐字比对诊断：</span>
+              {diffSummary.isMatch ? (
+                <span className="px-2 py-0.5 rounded bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium">
+                  全对（{diffSummary.correctCount} 字）
+                </span>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                    对 {diffSummary.correctCount}
+                  </span>
+                  {diffSummary.wrongCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300">
+                      错 {diffSummary.wrongCount}
+                    </span>
+                  )}
+                  {diffSummary.missingCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
+                      漏 {diffSummary.missingCount}
+                    </span>
+                  )}
+                  {diffSummary.extraCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                      多 {diffSummary.extraCount}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end gap-1.5 text-lg font-classical pt-1">
+              {diffSummary.diffs.map((d, idx) => {
                 if (d.status === "correct") {
                   return (
                     <span
                       key={idx}
+                      title="字对"
                       className="inline-flex items-center justify-center w-7 h-7 rounded bg-emerald-100/70 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold"
                     >
                       {d.char}
@@ -409,21 +443,47 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
                 }
                 if (d.status === "wrong") {
                   return (
-                    <div key={idx} className="relative inline-flex flex-col items-center">
-                      <span className="text-[10px] text-zinc-400 font-sans -mb-1">{d.expected}</span>
+                    <div
+                      key={idx}
+                      title={`错字：写了「${d.char}」，应为「${d.expected ?? ""}」`}
+                      className="relative inline-flex flex-col items-center"
+                    >
+                      <span className="text-[10px] text-red-600 dark:text-red-400 font-sans -mb-0.5 leading-none">
+                        {d.expected}
+                      </span>
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 font-semibold line-through">
                         {d.char}
                       </span>
                     </div>
                   );
                 }
+                if (d.status === "missing") {
+                  return (
+                    <div
+                      key={idx}
+                      title={`漏字：应为「${d.expected ?? ""}」`}
+                      className="relative inline-flex flex-col items-center"
+                    >
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans -mb-0.5 leading-none">
+                        {d.expected}
+                      </span>
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-dashed border-amber-400 bg-amber-50/70 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-xs font-sans font-semibold">
+                        漏
+                      </span>
+                    </div>
+                  );
+                }
                 return (
-                  <div key={idx} className="relative inline-flex flex-col items-center">
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-sans -mb-1">
-                      {d.expected}
+                  <div
+                    key={idx}
+                    title={`多字：多余「${d.char}」`}
+                    className="relative inline-flex flex-col items-center"
+                  >
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-sans -mb-0.5 leading-none">
+                      多
                     </span>
-                    <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-dashed border-amber-400 text-amber-600 dark:text-amber-400 font-semibold">
-                      缺
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-purple-300 dark:border-purple-800 bg-purple-100/70 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-semibold line-through">
+                      {d.char}
                     </span>
                   </div>
                 );
@@ -446,17 +506,34 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
               <div>
                 <div className="text-[11px] font-medium text-zinc-500 mb-1.5 flex items-center gap-1">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>易错字与通假采分警示：</span>
+                  <span>
+                    易错字与通假采分警示：
+                    {failedKeyPointSet.size > 0 && (
+                      <span className="ml-1.5 text-red-600 dark:text-red-400 font-semibold">
+                        （本次命中 {failedKeyPointSet.size} 处易错点）
+                      </span>
+                    )}
+                  </span>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {currentQ.keyPoints.map((pt, idx) => (
-                    <span
-                      key={idx}
-                      className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium"
-                    >
-                      {pt}
-                    </span>
-                  ))}
+                <div className="flex flex-wrap gap-1.5">
+                  {currentQ.keyPoints.map((pt, idx) => {
+                    const isTriggered = failedKeyPointSet.has(idx);
+                    return (
+                      <span
+                        key={idx}
+                        className={`text-xs px-2 py-0.5 rounded font-medium inline-flex items-center gap-1 transition-colors ${
+                          isTriggered
+                            ? "bg-red-100/90 dark:bg-red-950/70 text-red-800 dark:text-red-200 border border-red-300 dark:border-red-800"
+                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        {isTriggered && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                        )}
+                        {pt}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -480,23 +557,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
       </div>
       )}
 
-      </div>
-
-      <StudySidebar
-        article={{
-          title: currentQ.articleTitle,
-          author: currentQ.author
-        }}
-        progressLabel={`第 ${currentIndex + 1} / ${activeQuestions.length} 题`}
-        progressPercent={((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100}
-        shortcuts={[
-          { keys: "Enter", label: "提交核对 / 下一题" },
-          { keys: "Ctrl + Enter", label: "输入框内直接提交" }
-        ]}
-        hint="先自己默写完整，再看逐字比对。标红的字是真写错，黄色「缺」是漏字，抄一遍比读三遍管用。"
-      />
-
-      </div>
+      </StudyWorkspaceShell>
 
       {/* Question Index Palette Drawer */}
       {showQuestionDrawer && (
@@ -551,6 +612,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };

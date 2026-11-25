@@ -20,9 +20,10 @@ import {
   ChevronRight,
   Keyboard
 } from "lucide-react";
-import { getCurricularTiers, CurricularTier, ScopeCategoryOption } from "../data/articleTaxonomy";
+import { getCurricularTiers } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
-import { LastSessionState, NavView } from "../storage/sessionTracker";
+import { LastSessionState, NavView, useLastSession } from "../storage/sessionTracker";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
 
 export type { NavView };
 
@@ -39,32 +40,53 @@ export const NAV_SHORTCUT_ORDER: { view: NavView; key: string; label: string }[]
 ];
 
 interface NavbarProps {
-  currentView: NavView;
-  onSelectView: (view: NavView) => void;
-  selectedScope: string;
-  onSelectScope: (scope: string) => void;
-  soundEnabled: boolean;
-  onToggleSound: () => void;
-  theme: AppTheme;
-  onThemeChange: (theme: AppTheme) => void;
+  currentView?: NavView;
+  onSelectView?: (view: NavView) => void;
+  selectedScope?: string;
+  onSelectScope?: (scope: string) => void;
+  soundEnabled?: boolean;
+  onToggleSound?: () => void;
+  theme?: AppTheme;
+  onThemeChange?: (theme: AppTheme) => void;
   lastSession?: LastSessionState | null;
   onResumeSession?: (session: LastSessionState) => void;
   onShowShortcuts?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentView,
-  onSelectView,
-  selectedScope,
-  onSelectScope,
-  soundEnabled,
-  onToggleSound,
-  theme,
-  onThemeChange,
-  lastSession,
-  onResumeSession,
-  onShowShortcuts
+  currentView: propCurrentView,
+  onSelectView: propOnSelectView,
+  selectedScope: propSelectedScope,
+  onSelectScope: propOnSelectScope,
+  soundEnabled: propSoundEnabled,
+  onToggleSound: propOnToggleSound,
+  theme: propTheme,
+  onThemeChange: propOnThemeChange,
+  lastSession: propLastSession,
+  onResumeSession: propOnResumeSession,
+  onShowShortcuts: propOnShowShortcuts,
+  onOpenCommandPalette: propOnOpenCommandPalette
 }) => {
+  const appCtx = useOptionalStudyApp();
+  const { lastSession: storedLastSession } = useLastSession();
+
+  const currentView = propCurrentView ?? appCtx?.currentView ?? "dashboard";
+  const onSelectView = propOnSelectView ?? appCtx?.setCurrentView ?? (() => {});
+  const selectedScope = propSelectedScope ?? appCtx?.selectedScope ?? "ALL";
+  const onSelectScope = propOnSelectScope ?? appCtx?.setSelectedScope ?? (() => {});
+  const soundEnabled = propSoundEnabled ?? appCtx?.soundEnabled ?? false;
+  const onToggleSound = propOnToggleSound ?? appCtx?.toggleSound ?? (() => {});
+  const theme = propTheme ?? appCtx?.theme ?? "light";
+  const onThemeChange = propOnThemeChange ?? appCtx?.setTheme ?? (() => {});
+  const lastSession = propLastSession !== undefined ? propLastSession : storedLastSession;
+  const onResumeSession = propOnResumeSession ?? appCtx?.resumeSession;
+  const onShowShortcuts = propOnShowShortcuts ?? (appCtx ? () => appCtx.setShowShortcuts(true) : undefined);
+  const onOpenCommandPalette =
+    propOnOpenCommandPalette ?? (appCtx ? () => appCtx.setShowCommandPalette(true) : undefined);
+
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
+  const cmdShortcutLabel = isMac ? "⌘K" : "Ctrl K";
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
   const [activeTierId, setActiveTierId] = useState<string>("CORE");
@@ -210,6 +232,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Right Controls */}
             <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              {/* Quick Search / Command Palette (Cmd/Ctrl + K) */}
+              {onOpenCommandPalette && (
+                <button
+                  onClick={onOpenCommandPalette}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200/80 dark:border-zinc-700/80 bg-zinc-50/90 dark:bg-zinc-800/70 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+                  title={`全局快速搜索（${cmdShortcutLabel}）`}
+                  aria-label="打开命令面板"
+                >
+                  <Search className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden md:inline text-[11px]">搜索</span>
+                  <kbd className="hidden sm:inline-block text-[10px] font-mono px-1 py-0.2 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500">
+                    {cmdShortcutLabel}
+                  </kbd>
+                </button>
+              )}
+
               {/* Quick Resume — subtle ghost pill, only on xl */}
               {lastSession && currentView !== lastSession.view && (
                 <button

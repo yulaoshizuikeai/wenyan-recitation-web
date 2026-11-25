@@ -12,6 +12,8 @@ export enum CardState {
   RELEARNING = 3
 }
 
+export type ReviewSource = "flipcard" | "snowball" | "cloze" | "scenario" | "cram";
+
 export interface CardFsrsState {
   cardId: string;
   state: CardState;
@@ -25,6 +27,7 @@ export interface CardFsrsState {
   lastReviewTime: number | null;
   dueTime: number;
   isLeech: boolean;
+  lastSource?: ReviewSource;
 }
 
 export interface ReviewLog {
@@ -38,6 +41,8 @@ export interface ReviewLog {
   elapsedDays: number;
   scheduledDays: number;
   reviewTime: number;
+  source?: ReviewSource;
+  quotaIsolated?: boolean;
 }
 
 export interface NextStateResult {

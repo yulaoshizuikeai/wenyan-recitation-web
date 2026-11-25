@@ -27,22 +27,29 @@ import { useLastSession, LastSessionState, saveLastSession, SessionExtra } from 
 import { PickUpCard } from "../components/PickUpCard";
 import { UnderstandingCard } from "../components/UnderstandingCard";
 import { getRecommendedMode } from "../domain/recommend/modeRecommender";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
 
 interface CatalogViewProps {
   initialArticleId?: string;
   resumeExtra?: SessionExtra;
-  onOpenArticleInView: (articleId: string, view: NavView) => void;
+  onOpenArticleInView?: (articleId: string, view: NavView) => void;
   onResumeSession?: (session: LastSessionState) => void;
-  selectedScope: string;
+  selectedScope?: string;
 }
 
 export const CatalogView: React.FC<CatalogViewProps> = ({
-  initialArticleId,
-  resumeExtra,
-  onOpenArticleInView,
-  onResumeSession,
-  selectedScope
+  initialArticleId: propInitialArticleId,
+  resumeExtra: propResumeExtra,
+  onOpenArticleInView: propOnOpenArticleInView,
+  onResumeSession: propOnResumeSession,
+  selectedScope: propSelectedScope
 }) => {
+  const appCtx = useOptionalStudyApp();
+  const initialArticleId = propInitialArticleId ?? appCtx?.activeArticleId;
+  const resumeExtra = propResumeExtra ?? appCtx?.resumeExtra;
+  const onOpenArticleInView = propOnOpenArticleInView ?? appCtx?.navigateToArticle ?? (() => {});
+  const onResumeSession = propOnResumeSession ?? appCtx?.resumeSession;
+  const selectedScope = propSelectedScope ?? appCtx?.selectedScope ?? "ALL";
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");

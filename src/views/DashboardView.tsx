@@ -8,6 +8,7 @@ import { NavView } from "../components/Navbar";
 import { useLastSession, LastSessionState } from "../storage/sessionTracker";
 import { PickUpCard } from "../components/PickUpCard";
 import { getLocalDateString } from "../utils/date";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
 import {
   Layers,
   Sparkles,
@@ -23,18 +24,24 @@ import {
 } from "lucide-react";
 
 interface DashboardViewProps {
-  onNavigate: (view: NavView) => void;
-  onOpenArticleInView: (articleId: string, view: NavView) => void;
+  onNavigate?: (view: NavView) => void;
+  onOpenArticleInView?: (articleId: string, view: NavView) => void;
   onResumeSession?: (session: LastSessionState) => void;
-  selectedScope: string;
+  selectedScope?: string;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  onNavigate,
-  onOpenArticleInView,
-  onResumeSession,
-  selectedScope
+  onNavigate: propOnNavigate,
+  onOpenArticleInView: propOnOpenArticleInView,
+  onResumeSession: propOnResumeSession,
+  selectedScope: propSelectedScope
 }) => {
+  const appCtx = useOptionalStudyApp();
+  const onNavigate = propOnNavigate ?? appCtx?.setCurrentView ?? (() => {});
+  const onOpenArticleInView = propOnOpenArticleInView ?? appCtx?.navigateToArticle ?? (() => {});
+  const onResumeSession = propOnResumeSession ?? appCtx?.resumeSession;
+  const selectedScope = propSelectedScope ?? appCtx?.selectedScope ?? "ALL";
+
   const [cardStates, setCardStates] = useState<CardFsrsState[]>([]);
   const [dailyRecords, setDailyRecords] = useState<{ date: string; count: number }[]>([]);
   const { lastSession, clearSession } = useLastSession();

@@ -15,7 +15,7 @@ interface WenYanDB extends DBSchema {
   };
   daily_records: {
     key: string; // 'YYYY-MM-DD'
-    value: { date: string; count: number; newLearned: number };
+    value: { date: string; count: number; newLearned: number; snowballCount?: number };
   };
   bottlenecks: {
     key: string; // articleId
@@ -90,6 +90,11 @@ export async function recordReviewLog(log: ReviewLog): Promise<void> {
   const id = `${log.cardId}_${log.reviewTime}_${Math.random().toString(36).slice(2, 6)}`;
   await db.put("logs", { ...log, id });
 
+  // Quota-isolated logs (e.g. snowball completion) must not consume flashcard daily quotas.
+  if (log.quotaIsolated || log.source === "snowball") {
+    return;
+  }
+
   // Update today's record
   const todayStr = getLocalDateString();
   const existing = (await db.get("daily_records", todayStr)) || { date: todayStr, count: 0, newLearned: 0 };
@@ -100,7 +105,43 @@ export async function recordReviewLog(log: ReviewLog): Promise<void> {
   await db.put("daily_records", existing);
 }
 
-export async function getDailyRecords(): Promise<{ date: string; count: number; newLearned: number }[]> {
+/**
+ * Persist snowball completion review logs in a single transaction while isolating
+ * flashcard daily new/review quotas (never increments newLearned, and records at most
+ * 1 session activity count for the heatmap/streak instead of per-card counts).
+ */
+export async function recordSnowballCompletionLogs(
+  logs: ReviewLog[],
+  recordDailyActivity = true
+): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction(["logs", "daily_records"], "readwrite");
+  const logStore = tx.objectStore("logs");
+
+  for (let i = 0; i < logs.length; i++) {
+    const log = logs[i];
+    const id = `${log.cardId}_${log.reviewTime}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+    await logStore.put({
+      ...log,
+      id,
+      source: log.source ?? "snowball",
+      quotaIsolated: log.quotaIsolated ?? true
+    });
+  }
+
+  if (recordDailyActivity) {
+    const todayStr = getLocalDateString();
+    const recordStore = tx.objectStore("daily_records");
+    const existing = (await recordStore.get(todayStr)) || { date: todayStr, count: 0, newLearned: 0 };
+    existing.count += 1;
+    existing.snowballCount = (existing.snowballCount ?? 0) + 1;
+    await recordStore.put(existing);
+  }
+
+  await tx.done;
+}
+
+export async function getDailyRecords(): Promise<{ date: string; count: number; newLearned: number; snowballCount?: number }[]> {
   const db = await getDB();
   return db.getAll("daily_records");
 }
@@ -131,7 +172,7 @@ export interface BackupData {
   version?: string;
   exportTime?: string;
   cards: CardFsrsState[];
-  records: { date: string; count: number; newLearned: number }[];
+  records: { date: string; count: number; newLearned: number; snowballCount?: number }[];
 }
 
 export async function importAllProgress(
@@ -160,7 +201,8 @@ export async function importAllProgress(
       await recordStore.put({
         date: rec.date,
         count: rec.count,
-        newLearned: typeof rec.newLearned === "number" ? rec.newLearned : 0
+        newLearned: typeof rec.newLearned === "number" ? rec.newLearned : 0,
+        ...(typeof rec.snowballCount === "number" ? { snowballCount: rec.snowballCount } : {})
       });
       recordsImported += 1;
     }

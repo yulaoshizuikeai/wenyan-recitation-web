@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef, Suspense } from "react";
-import { Navbar, NavView, NAV_SHORTCUT_ORDER } from "./components/Navbar";
+import React, { Suspense } from "react";
+import { Navbar } from "./components/Navbar";
 import { ShortcutHelp } from "./components/ShortcutHelp";
+import { CommandPalette } from "./components/CommandPalette";
 import { DashboardView } from "./views/DashboardView";
-import { sound } from "./sound/audioSynthesizer";
-import { getSetting, setSetting } from "./storage/db";
-import { getStoredTheme, applyTheme, AppTheme } from "./utils/theme";
-import { useLastSession, LastSessionState, SessionExtra, VALID_NAV_VIEWS, getLastSession } from "./storage/sessionTracker";
-import { ALL_ARTICLES } from "./data/curriculumData";
+import { StudyAppProvider, useStudyApp } from "./state/StudyAppContext";
+import { useWorkspaceShortcuts } from "./hooks/useWorkspaceShortcuts";
 
 const SnowballView = React.lazy(() => import("./views/SnowballView").then(m => ({ default: m.SnowballView })));
 const FlipCardView = React.lazy(() => import("./views/FlipCardView").then(m => ({ default: m.FlipCardView })));
@@ -27,200 +25,51 @@ function ViewLoadingFallback() {
   );
 }
 
-export function App() {
-  const { lastSession } = useLastSession();
-  const [currentView, setCurrentView] = useState<NavView>("dashboard");
-  const [selectedScope, setSelectedScope] = useState<string>("ALL");
-  const [activeArticleId, setActiveArticleId] = useState<string>(() => {
-    if (lastSession?.articleId && ALL_ARTICLES.some(a => a.id === lastSession.articleId)) {
-      return lastSession.articleId;
-    }
-    return "art_bx1_12"; // 劝学
+function AppShell() {
+  const {
+    currentView,
+    selectedScope,
+    activeArticleId,
+    theme,
+    soundEnabled,
+    showShortcuts,
+    showCommandPalette,
+    setCurrentView,
+    setSelectedScope,
+    setTheme,
+    toggleSound,
+    toggleShortcuts,
+    setShowShortcuts,
+    toggleCommandPalette,
+    setShowCommandPalette,
+    navigateToArticle,
+  } = useStudyApp();
+
+  // 全局统一快捷键调度：? 快捷键帮助、Cmd/Ctrl + K 命令面板、Alt + 1~8 视图切换
+  useWorkspaceShortcuts({
+    onToggleShortcuts: toggleShortcuts,
+    onToggleCommandPalette: toggleCommandPalette,
+    onSwitchView: setCurrentView,
+    isModalOpen: showShortcuts || showCommandPalette,
   });
-  const [resumeExtra, setResumeExtra] = useState<SessionExtra | undefined>(undefined);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
-  const [theme, setTheme] = useState<AppTheme>(() => getStoredTheme());
-  const [showShortcuts, setShowShortcuts] = useState(false);
-  const hasAutoResumedRef = useRef<boolean>(false);
-
-  // Apply theme changes to document
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
-
-  // Initial application startup settings (run once on mount)
-  useEffect(() => {
-    getSetting<string>("selected_scope", "ALL").then(setSelectedScope);
-    getSetting<boolean>("sound_enabled", false).then(val => {
-      setSoundEnabled(val);
-      sound.enabled = val;
-    });
-
-    // Check if auto resume on launch is enabled (only once on startup)
-    if (!hasAutoResumedRef.current) {
-      hasAutoResumedRef.current = true;
-      getSetting<boolean>("auto_resume_on_startup", false).then(autoResume => {
-        if (autoResume) {
-          const session = getLastSession();
-          if (session && session.view !== "dashboard") {
-            handleResumeLastSession(session);
-          }
-        }
-      });
-    }
-  }, []);
-
-  // Global keyboard shortcuts: Alt + 1~8 switches views, ? opens the shortcut sheet
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setShowShortcuts(prev => !prev);
-        return;
-      }
-
-      if (e.altKey && !e.ctrlKey && !e.metaKey) {
-        const digit = e.code.startsWith("Digit") ? e.code.slice(5) : "";
-        const matched = NAV_SHORTCUT_ORDER.find(s => s.key === digit);
-        if (matched) {
-          e.preventDefault();
-          setResumeExtra(undefined);
-          setCurrentView(matched.view);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const handleSelectScope = (scope: string) => {
-    setSelectedScope(scope);
-    setSetting("selected_scope", scope);
-  };
-
-  const handleToggleSound = () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    sound.enabled = next;
-    setSetting("sound_enabled", next);
-  };
-
-  const handleOpenArticleInView = (articleId: string, view: NavView) => {
-    setActiveArticleId(articleId);
-    setResumeExtra(undefined);
-    setCurrentView(view);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleResumeLastSession = (session: LastSessionState) => {
-    if (!VALID_NAV_VIEWS.has(session.view)) {
-      setCurrentView("dashboard");
-      return;
-    }
-    if (session.articleId && ALL_ARTICLES.some(a => a.id === session.articleId)) {
-      setActiveArticleId(session.articleId);
-    }
-    setResumeExtra(session.extra);
-    setCurrentView(session.view);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors">
       {/* Top Navbar */}
-      <Navbar
-        currentView={currentView}
-        onSelectView={setCurrentView}
-        selectedScope={selectedScope}
-        onSelectScope={handleSelectScope}
-        soundEnabled={soundEnabled}
-        onToggleSound={handleToggleSound}
-        theme={theme}
-        onThemeChange={setTheme}
-        lastSession={lastSession}
-        onResumeSession={handleResumeLastSession}
-        onShowShortcuts={() => setShowShortcuts(true)}
-      />
+      <Navbar />
 
       {/* Main Content Area */}
       <main className="flex-1 pb-10">
-        {currentView === "dashboard" && (
-          <DashboardView
-            onNavigate={setCurrentView}
-            onOpenArticleInView={handleOpenArticleInView}
-            onResumeSession={handleResumeLastSession}
-            selectedScope={selectedScope}
-          />
-        )}
+        {currentView === "dashboard" && <DashboardView />}
 
         <Suspense fallback={<ViewLoadingFallback />}>
-          {currentView === "cram" && (
-            <CramModeView
-              onOpenArticleInView={handleOpenArticleInView}
-              resumeExtra={resumeExtra}
-            />
-          )}
-
-          {currentView === "snowball" && (
-            <SnowballView
-              initialArticleId={activeArticleId}
-              selectedScope={selectedScope}
-              resumeExtra={resumeExtra}
-            />
-          )}
-
-          {currentView === "flipcard" && (
-            <FlipCardView
-              initialArticleId={activeArticleId}
-              selectedScope={selectedScope}
-              resumeExtra={resumeExtra}
-              onOpenArticleInView={handleOpenArticleInView}
-            />
-          )}
-
-          {currentView === "cloze" && (
-            <ClozeView
-              initialArticleId={activeArticleId}
-              selectedScope={selectedScope}
-              resumeExtra={resumeExtra}
-              onOpenArticleInView={handleOpenArticleInView}
-            />
-          )}
-
-          {currentView === "scenario" && (
-            <ScenarioView
-              resumeExtra={resumeExtra}
-            />
-          )}
-
-          {currentView === "catalog" && (
-            <CatalogView
-              initialArticleId={activeArticleId}
-              resumeExtra={resumeExtra}
-              onOpenArticleInView={handleOpenArticleInView}
-              onResumeSession={handleResumeLastSession}
-              selectedScope={selectedScope}
-            />
-          )}
-
-          {currentView === "settings" && (
-            <SettingsView
-              theme={theme}
-              onThemeChange={setTheme}
-            />
-          )}
+          {currentView === "cram" && <CramModeView />}
+          {currentView === "snowball" && <SnowballView />}
+          {currentView === "flipcard" && <FlipCardView />}
+          {currentView === "cloze" && <ClozeView />}
+          {currentView === "scenario" && <ScenarioView />}
+          {currentView === "catalog" && <CatalogView />}
+          {currentView === "settings" && <SettingsView />}
         </Suspense>
       </main>
 
@@ -236,8 +85,31 @@ export function App() {
         </div>
       </footer>
 
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        currentView={currentView}
+        selectedScope={selectedScope}
+        theme={theme}
+        soundEnabled={soundEnabled}
+        activeArticleId={activeArticleId}
+        onSelectView={setCurrentView}
+        onSelectArticle={navigateToArticle}
+        onSelectScope={setSelectedScope}
+        onThemeChange={setTheme}
+        onToggleSound={toggleSound}
+      />
+
       <ShortcutHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <StudyAppProvider>
+      <AppShell />
+    </StudyAppProvider>
   );
 }
 

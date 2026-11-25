@@ -6,6 +6,7 @@ import { ankiScheduler } from "../domain/fsrs/ankiScheduler";
 import { getLocalDateString } from "../utils/date";
 import { AppTheme, toggleTheme } from "../utils/theme";
 import { useLastSession, formatRelativeTime } from "../storage/sessionTracker";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
 import {
   Settings as SettingsIcon,
   Sliders,
@@ -26,7 +27,13 @@ interface SettingsViewProps {
   onThemeChange?: (theme: AppTheme) => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ theme = "light", onThemeChange }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({
+  theme: propTheme,
+  onThemeChange: propOnThemeChange
+}) => {
+  const appCtx = useOptionalStudyApp();
+  const theme = propTheme ?? appCtx?.theme ?? "light";
+  const onThemeChange = propOnThemeChange ?? appCtx?.setTheme;
   const [retention, setRetention] = useState<number>(0.93);
   const [factor, setFactor] = useState<number>(0.72);
   const [dailyNewLimit, setDailyNewLimit] = useState<number>(20);

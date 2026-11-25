@@ -10,6 +10,34 @@
 
 ### 新增
 
+- **高考情境默写 LCS / 编辑距离精准对齐与考点提示**：新增 `src/domain/scenario/diffEngine.ts`。基于动态规划最小编辑距离（Levenshtein DP）实现逐字对齐，精准区分「字对」「错字」「漏字」「多字」四种状态，彻底解决以往学生在句首或句中漏写或多写一个字导致后续写对的字符全部错位标红的问题；在批改不通过时，自动比对并高亮原题关联的 `keyPoints`（通假字、偏旁易混字等），给出针对性采分提醒。
+- **文言关键词与虚词过滤引擎**：新增 `src/domain/cloze/keywordExtractor.ts`。抽离文言虚词表（24 个纯虚词）与标点判定，自动从难词注音表与注释中提取考点词眼，进行正文存在性校验与长词优先密度控制，并将分词结果按自然段拆分与分状态判定。
+- **轻量应用状态层与 URL Hash 同步**：新增 `src/state/StudyAppContext.tsx`。集中管理视图模式、选篇、教材范围、主题、音效与弹窗状态；支持浏览器前进后退与深度链接（如 `#/snowball/art_bx1_12`、`#/cloze/art_bx1_12`），刷新页面能直接留在当前背诵篇目与模式。
+- **Notion 式全局命令面板（Cmd/Ctrl + K）**：新增 `src/components/CommandPalette.tsx`，并在顶栏增加搜索快捷入口。支持键盘快捷键秒搜全库 100 篇古诗文（按标题/作者/朝代/选册）、跨模式直达、切换教材范围与主题。
+- **统一工作区外壳与快捷键调度**：新增 `src/components/StudyWorkspaceShell.tsx` 与 `src/hooks/useWorkspaceShortcuts.ts`。为各个背诵视图统一承载顶栏、侧边栏和注音/大意抽屉，并在全局集中处理输入框屏蔽、弹窗开启时冻结快捷键以及与 `Alt + 1~8` 的修饰键隔离。
+- **通用选篇弹窗**：新增 `src/components/ArticlePickerModal.tsx`，统一朝代筛选与篇目快速定位，消除了滚雪球与刻漏字原先两处重复实现的选篇弹窗代码。
+- **闪卡语序连背与前句引子提示**：在闪卡正面增加「按课文语序连背」开关，帮助学生按自然文脉建立节奏感；开放 `H` 快捷键展开「前句引子（`precedingClauseHint`）」，解决长文背诵起头断片的问题。
+- **易错字手打盲默校验（Typing Recall）**：新增 `src/components/TypingRecallInput.tsx`。在刻漏字 L1 关键词挖空和闪卡学习中提供「手打盲默」开关，学生可直接键盘敲入挖空字词，正确时自动刮开并步进下一词，强化高考「嘴会背、手不写错」的字形准确度。
+- **闪卡兄弟卡同日避让（Sibling Burying）**：在 `src/domain/fsrs/ankiScheduler.ts` 中基于 `segmentId` 识别同句正反挖空卡（出句背对句 / 对句背出句），每日新学与复习队列默认同一天只排一张，另一张自动顺延至次日，避免同一句在同一次学习中反复出现、挤占新学配额。
+- **滚雪球写卡与闪卡配额隔离**：在 `src/domain/cloze/snowballEngine.ts` 与 `src/storage/db.ts`（写入标记 `source: "snowball"`）中，长文滚雪球通关批量沉淀卡片时按 `segmentId` 归并主卡，且在闪卡调度中予以避让，防止单篇 20+ 联长文瞬间撑爆当日闪卡新学和复习额度。
+- **Vitest 单元测试套件与自动化 CI 门禁**：接入 `vitest` 与 `npm test`（`vitest run`），并更新 `.github/workflows/deploy.yml`，在 GitHub Actions 构建部署前自动执行单测。新增针对 FSRS 引擎、排程避让、LCS 文本对齐、关键词提取、日期跨零点以及全 100 篇注音/理解数据完整性的自动化测试。
+
+### 变更
+
+- **超长学习视图拆解解耦**：
+  - `src/views/FlipCardView.tsx`（原 869 行）解耦抽离为 `src/hooks/useFlipCardSession.ts`（会话状态机与 FSRS 评分）、`src/components/flipcard/FlipCardBody.tsx`（卡片主体与操作栏）与 `src/components/flipcard/FlipCardSummary.tsx`（结算统计卡片），主视图收敛至 328 行。
+  - `src/views/CramModeView.tsx`（原 863 行）拆分为 `src/components/cram/CramReciteCard.tsx`（单卡背诵）与 `src/components/cram/CramQuickList.tsx`（列表速查），主视图收敛至 220 行。
+- **学习视图接入统一工作区外壳**：`SnowballView`、`ClozeView`、`ScenarioView`、`FlipCardView` 统一迁移至 `<StudyWorkspaceShell>`，消除了各视图内重复维护的外框布局与 `keydown` 监听。
+- **视图组件剥离纯算法与数据逻辑**：`ScenarioView.tsx` 移除内联标点正则与逐位比对循环，改调 `diffEngine.ts`；`ClozeView.tsx` 移除内联虚词集合与正文字符串匹配，改调 `keywordExtractor.ts`。
+- **顶栏接入轻量状态与命令面板入口**：`Navbar.tsx` 与全站 8 个视图通过 `useOptionalStudyApp()` 接入集中状态，消除从 `App.tsx` 的逐层 Props 传递（Prop Drilling）。
+
+### 修复
+
+- **闪卡背面释义全篇失真问题**：修复 `src/data/flashcardGenerator.ts` 过去把整篇第一句大意直接赋给所有卡片背面作为 `backTranslation` 的缺陷；改用卡片所在段落真实大意（`ARTICLE_UNDERSTANDING`），并动态提取本句命中的难词注音与通假字标签，卡背释义与考点读音不再答非所问。
+
+### 新增
+
+- **架构演进路径图与远期规划 Checklist**：新增 `docs/ARCHITECTURE_ROADMAP.md`，梳理当前纯前端 SPA 架构基线、面向 Notion 式 Local-First 架构的技术演进四阶段（内存缓存引擎、标准化多视图仓库、统一工作区外壳与命令层、索引/正文按需拆包与 PWA）以及学习引擎与教研体验升级四轨道（LCS 精准批改、兄弟卡避让、段落串讲/前句提示、跨模式 FSRS 闭环、分段雪球与离线朗读），拆分为可追踪的验收 Checklist。
 - **统一学习工作区工具栏**：新增 `src/components/StudyToolbar.tsx`，为滚雪球、渐进遮挡、高考默写等桌面端学习视图提供一致的模式标签、切篇入口、内联进度条与注音/大意快捷开关。
 
 - **JSON 备份导入恢复**：设置页新增「导入恢复 JSON」功能，支持校验并事务性恢复 `cards` 与 `daily_records` 到本地 IndexedDB（`src/storage/db.ts`、`src/views/SettingsView.tsx`）。
