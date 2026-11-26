@@ -8,6 +8,10 @@
 
 ## [未发布]
 
+### 修复
+
+- **桌面端顶栏导航项与右侧控制区重叠遮挡**：修复在中宽屏（1024px~1360px 宽度区间，如部分笔记本屏幕）下，`Navbar.tsx` 中间导航栏（`flex-1`）与右侧搜索框、接续按钮、教材范围按钮宽度不足互相挤压重叠的样式缺陷。将 `<nav>` 改为 `shrink-0` 锁定基础间距，右侧接续按钮限制在超宽屏 `2xl` 展示，教材范围标签宽度自适应截断（`max-w-[130px] md:max-w-[160px]`），各元素添加 `shrink-0`，彻底根除遮挡。
+
 ### 新增
 
 - **高考情境默写 LCS / 编辑距离精准对齐与考点提示**：新增 `src/domain/scenario/diffEngine.ts`。基于动态规划最小编辑距离（Levenshtein DP）实现逐字对齐，精准区分「字对」「错字」「漏字」「多字」四种状态，彻底解决以往学生在句首或句中漏写或多写一个字导致后续写对的字符全部错位标红的问题；在批改不通过时，自动比对并高亮原题关联的 `keyPoints`（通假字、偏旁易混字等），给出针对性采分提醒。
@@ -24,6 +28,7 @@
 
 ### 变更
 
+- **精简远期规划中的冗余条目**：从 `docs/ARCHITECTURE_ROADMAP.md` 中移除实用性较低的 `Track L4`（离线朗读跟背与高考备考诊断看板），学习引擎线收敛为聚焦提分与记忆闭环的 `Track L1–L3` 三条轨道。
 - **移除 GitHub Actions 工作流**：删除 `.github/workflows/deploy.yml`，改由 Cloudflare Pages 原生 GitHub 自动集成在每次推送后直接完成构建与上线，避免因缺少 GitHub Secrets 导致的无效报错红叉。
 - **超长学习视图拆解解耦**：
   - `src/views/FlipCardView.tsx`（原 869 行）解耦抽离为 `src/hooks/useFlipCardSession.ts`（会话状态机与 FSRS 评分）、`src/components/flipcard/FlipCardBody.tsx`（卡片主体与操作栏）与 `src/components/flipcard/FlipCardSettlement.tsx`（结算统计卡片），主视图收敛至 328 行。
@@ -38,7 +43,7 @@
 
 ### 新增
 
-- **架构演进路径图与远期规划 Checklist**：新增 `docs/ARCHITECTURE_ROADMAP.md`，梳理当前纯前端 SPA 架构基线、面向 Notion 式 Local-First 架构的技术演进四阶段（内存缓存引擎、标准化多视图仓库、统一工作区外壳与命令层、索引/正文按需拆包与 PWA）以及学习引擎与教研体验升级四轨道（LCS 精准批改、兄弟卡避让、段落串讲/前句提示、跨模式 FSRS 闭环、分段雪球与离线朗读），拆分为可追踪的验收 Checklist。
+- **架构演进路径图与远期规划 Checklist**：新增 `docs/ARCHITECTURE_ROADMAP.md`，梳理当前纯前端 SPA 架构基线、面向 Notion 式 Local-First 架构的技术演进四阶段（内存缓存引擎、标准化多视图仓库、统一工作区外壳与命令层、索引/正文按需拆包与 PWA）以及学习引擎与教研体验升级三轨道（LCS 精准批改、兄弟卡避让、段落串讲/前句提示、跨模式 FSRS 闭环与分段雪球），拆分为可追踪的验收 Checklist。
 - **统一学习工作区工具栏**：新增 `src/components/StudyToolbar.tsx`，为滚雪球、渐进遮挡、高考默写等桌面端学习视图提供一致的模式标签、切篇入口、内联进度条与注音/大意快捷开关。
 
 - **JSON 备份导入恢复**：设置页新增「导入恢复 JSON」功能，支持校验并事务性恢复 `cards` 与 `daily_records` 到本地 IndexedDB（`src/storage/db.ts`、`src/views/SettingsView.tsx`）。

@@ -209,7 +209,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Desktop Navigation — 4 Pillars (dimmed slightly during active study for focus) */}
             <nav
-              className={`hidden lg:flex items-center gap-1.5 flex-1 min-w-0 transition-opacity duration-200 ${
+              className={`hidden lg:flex items-center gap-1.5 shrink-0 transition-opacity duration-200 ${
                 isStudyView ? "opacity-80 hover:opacity-100" : "opacity-100"
               }`}
             >
@@ -231,12 +231,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </nav>
 
             {/* Right Controls */}
-            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            <div className="flex items-center gap-1.5 ml-auto shrink-0 min-w-0">
               {/* Quick Search / Command Palette (Cmd/Ctrl + K) */}
               {onOpenCommandPalette && (
                 <button
                   onClick={onOpenCommandPalette}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200/80 dark:border-zinc-700/80 bg-zinc-50/90 dark:bg-zinc-800/70 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-zinc-200/80 dark:border-zinc-700/80 bg-zinc-50/90 dark:bg-zinc-800/70 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors shrink-0"
                   title={`全局快速搜索（${cmdShortcutLabel}）`}
                   aria-label="打开命令面板"
                 >
@@ -248,11 +248,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {/* Quick Resume — subtle ghost pill, only on xl */}
+              {/* Quick Resume — subtle ghost pill, only on 2xl to avoid crowding */}
               {lastSession && currentView !== lastSession.view && (
                 <button
                   onClick={() => onResumeSession && onResumeSession(lastSession)}
-                  className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
                   title={`继续上次研习：${lastSession.articleTitle ? `《${lastSession.articleTitle}》` : lastSession.modeName}`}
                 >
                   <RotateCcw className="w-3.5 h-3.5 shrink-0" />
@@ -265,7 +265,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Scope Selector — fixed-width, icon + short label */}
               <button
                 onClick={() => setIsScopeModalOpen(true)}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors max-w-[160px]"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors max-w-[130px] md:max-w-[160px] shrink-0"
                 title={`当前范围：${currentScopeLabel}`}
               >
                 <BookOpen className="w-3.5 h-3.5 shrink-0 text-zinc-400 dark:text-zinc-500" />
