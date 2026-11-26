@@ -1,5 +1,7 @@
-import { Article, ALL_ARTICLES } from "./curriculumData";
+import type { Article } from "./curriculumTypes";
+import { ARTICLE_INDEX } from "./curriculumIndex";
 import { generateFlashcardsForArticle, Flashcard } from "./flashcardGenerator";
+import { subscribeLearningContentLoaded } from "./learningContentLoader";
 
 /**
  * Global Flashcard Cache Singleton
@@ -9,6 +11,39 @@ import { generateFlashcardsForArticle, Flashcard } from "./flashcardGenerator";
 class FlashcardCacheService {
   private cache = new Map<string, Flashcard[]>();
   private allCardsCache: Flashcard[] | null = null;
+  private invalidateListeners = new Set<() => void>();
+
+  constructor() {
+    subscribeLearningContentLoaded((_, articleIds) => {
+      this.invalidateArticles(articleIds);
+    });
+  }
+
+  private isAllCurriculumArticles(articles: Article[]): boolean {
+    if (articles.length !== ARTICLE_INDEX.length) return false;
+    for (let i = 0; i < ARTICLE_INDEX.length; i++) {
+      if (articles[i].id !== ARTICLE_INDEX[i].id) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private notifyInvalidate(): void {
+    for (const listener of this.invalidateListeners) {
+      listener();
+    }
+  }
+
+  /**
+   * Subscribe to cache invalidations (e.g. when a learning content chunk finishes loading).
+   */
+  subscribeInvalidate(listener: () => void): () => void {
+    this.invalidateListeners.add(listener);
+    return () => {
+      this.invalidateListeners.delete(listener);
+    };
+  }
 
   /**
    * Get flashcards for a single article with memoization
@@ -24,8 +59,8 @@ class FlashcardCacheService {
    * Get flashcards for an array of articles
    */
   getCardsForArticles(articles: Article[]): Flashcard[] {
-    // If it's all articles and already cached
-    if (articles.length === ALL_ARTICLES.length && this.allCardsCache) {
+    const isAllCurriculum = this.isAllCurriculumArticles(articles);
+    if (isAllCurriculum && this.allCardsCache) {
       return this.allCardsCache;
     }
 
@@ -34,7 +69,7 @@ class FlashcardCacheService {
       result.push(...this.getCardsForArticle(art));
     }
 
-    if (articles.length === ALL_ARTICLES.length) {
+    if (isAllCurriculum) {
       this.allCardsCache = result;
     }
 
@@ -42,13 +77,30 @@ class FlashcardCacheService {
   }
 
   /**
-   * Pre-warm top high-frequency articles for instant first render
+   * Invalidate cached flashcards for specific article IDs (e.g. after async learning content load).
    */
-  prewarmCoreArticles(): void {
-    const coreIds = ["art_bx1_12", "art_bx1_13", "art_bx1_14", "art_bx1_08", "art_xb1_07", "art_xb3_11"];
-    for (const id of coreIds) {
-      const art = ALL_ARTICLES.find(a => a.id === id);
-      if (art) this.getCardsForArticle(art);
+  invalidateArticles(articleIds: readonly string[]): void {
+    let changed = false;
+    for (const id of articleIds) {
+      if (this.cache.delete(id)) {
+        changed = true;
+      }
+    }
+    if (this.allCardsCache !== null) {
+      this.allCardsCache = null;
+      changed = true;
+    }
+    if (changed) {
+      this.notifyInvalidate();
+    }
+  }
+
+  /**
+   * Pre-warm flashcards for already-loaded articles on demand.
+   */
+  prewarmArticles(articles: Article[]): void {
+    for (const art of articles) {
+      this.getCardsForArticle(art);
     }
   }
 
@@ -58,9 +110,8 @@ class FlashcardCacheService {
   clear(): void {
     this.cache.clear();
     this.allCardsCache = null;
+    this.notifyInvalidate();
   }
 }
 
 export const flashcardCache = new FlashcardCacheService();
-// Prewarm high-frequency articles immediately
-flashcardCache.prewarmCoreArticles();

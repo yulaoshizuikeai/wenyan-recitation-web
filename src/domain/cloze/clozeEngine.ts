@@ -50,8 +50,14 @@ export class ClozeEngine {
         return [{ id: nextId, originalText: text, isMasked: false }];
 
       case 1: {
-        // Collect valid keywords that appear in this text
-        const matchedKws = keywords.filter(k => k.trim().length > 0 && text.includes(k.trim()));
+        // Trim, deduplicate, and collect valid keywords that appear in this text
+        const matchedKws = Array.from(
+          new Set(
+            keywords
+              .map(k => k.trim())
+              .filter(k => k.length > 0 && text.includes(k))
+          )
+        );
 
         // 无有效关键词时退化为半句遮挡，不再挖虚词或句尾字
         if (matchedKws.length === 0) {

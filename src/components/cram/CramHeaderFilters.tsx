@@ -151,7 +151,7 @@ export const CramHeaderFilters: React.FC<CramHeaderFiltersProps> = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="搜索金句、作者、篇目或情境关键词..."
-            className="w-full pl-8.5 pr-3 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-colors"
+            className="w-full pl-8.5 pr-8 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 transition-colors"
           />
           {searchQuery && (
             <button
@@ -175,7 +175,13 @@ export const CramHeaderFilters: React.FC<CramHeaderFiltersProps> = ({
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>仅看考前卡壳/存疑</span>
             {weakCount > 0 && (
-              <span className="font-mono text-[10px] px-1 rounded-full bg-white/20 text-white">
+              <span
+                className={`font-mono text-[10px] px-1 rounded-full ${
+                  onlyWeak
+                    ? "bg-white/20 text-white"
+                    : "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300"
+                }`}
+              >
                 {weakCount}
               </span>
             )}

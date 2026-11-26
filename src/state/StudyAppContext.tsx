@@ -10,7 +10,16 @@
  *   - `parseHashRoute` / `formatHashRoute` — 纯函数，可独立单测
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  useId,
+} from "react";
 import {
   type NavView,
   VALID_NAV_VIEWS,
@@ -19,8 +28,9 @@ import {
   getLastSession,
 } from "../storage/sessionTracker";
 import { type AppTheme, getStoredTheme, applyTheme } from "../utils/theme";
-import { getSetting, setSetting } from "../storage/db";
-import { ALL_ARTICLES } from "../data/curriculumData";
+import { getSetting, setSetting, subscribeDbMutations } from "../storage/db";
+import { hydrateStudyStore } from "../storage/studyStore";
+import { ARTICLE_INDEX } from "../data/curriculumIndex";
 import { sound } from "../sound/audioSynthesizer";
 
 // ─── Re-exports for convenience ────────────────────────────────────────────────
@@ -60,7 +70,7 @@ const ARTICLE_VIEWS = new Set<NavView>(["snowball", "cloze", "flipcard", "catalo
 let _articleIdSet: Set<string> | null = null;
 function isValidArticleId(id: string): boolean {
   if (!_articleIdSet) {
-    _articleIdSet = new Set(ALL_ARTICLES.map(a => a.id));
+    _articleIdSet = new Set(ARTICLE_INDEX.map(a => a.id));
   }
   return _articleIdSet.has(id);
 }
@@ -137,6 +147,8 @@ export interface StudyAppState {
   showShortcuts: boolean;
   /** Cmd/Ctrl + K 命令面板是否展开 */
   showCommandPalette: boolean;
+  /** 当前打开的局部模态框数量 */
+  localModalCount: number;
 }
 
 export interface StudyAppActions {
@@ -161,7 +173,11 @@ export interface StudyAppActions {
   /** 设置命令面板显示 */
   setShowCommandPalette: (show: boolean) => void;
   /** 一次性导航到指定篇目+视图（常用于从典库/仪表盘/命令面板跳转） */
-  navigateToArticle: (articleId: string, view: NavView) => void;
+  navigateToArticle: (articleId: string, view: NavView, extra?: SessionExtra) => void;
+  /** 注册/注销局部模态框打开状态，用于屏蔽全局快捷键 */
+  registerModalOpen: (id: string, isOpen: boolean) => void;
+  /** 一键进入闪卡高频卡壳急救队列 */
+  startRescueFlipCard: () => void;
   /** 恢复上次学习会话 */
   resumeSession: (session: LastSessionState) => void;
 }
@@ -198,10 +214,14 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
   const [soundEnabled, setSoundEnabledRaw] = useState<boolean>(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [localModalCount, setLocalModalCount] = useState(0);
 
-  // 防止初始化时向 hash 写入循环
-  const isSyncingHash = useRef(false);
+  // 追踪最近一次主动写入的 hash，避免回声触发 onHashChange；允许浏览器立即后退/前进
+  const lastSyncedHashRef = useRef<string | null>(null);
   const hasAutoResumedRef = useRef(false);
+  const openModalIdsRef = useRef<Set<string>>(new Set());
+  const soundEnabledRef = useRef(soundEnabled);
+  soundEnabledRef.current = soundEnabled;
 
   // ── 恢复会话辅助函数 ──
   const resumeSession = useCallback((session: LastSessionState) => {
@@ -217,12 +237,46 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  // ── 初始化：从 IndexedDB 加载持久化设置 ──
+  // ── 初始化：预水合 StudyStore 并从 IndexedDB 加载持久化设置 ──
   useEffect(() => {
-    getSetting<string>("selected_scope", "ALL").then(setSelectedScopeRaw);
-    getSetting<boolean>("sound_enabled", false).then(val => {
-      setSoundEnabledRaw(val);
-      sound.enabled = val;
+    let cancelled = false;
+    void hydrateStudyStore();
+
+    const syncSettingsFromDb = () => {
+      getSetting<string>("selected_scope", "ALL")
+        .then((val) => {
+          if (!cancelled) setSelectedScopeRaw(val);
+        })
+        .catch(() => {});
+      getSetting<boolean>("sound_enabled", false)
+        .then((val) => {
+          if (cancelled) return;
+          soundEnabledRef.current = val;
+          setSoundEnabledRaw(val);
+          sound.enabled = val;
+        })
+        .catch(() => {});
+    };
+
+    syncSettingsFromDb();
+
+    const unsubscribeDb = subscribeDbMutations((event) => {
+      if (event.type === "setting") {
+        if (event.key === "selected_scope" && typeof event.value === "string") {
+          setSelectedScopeRaw(event.value);
+        } else if (event.key === "sound_enabled" && typeof event.value === "boolean") {
+          soundEnabledRef.current = event.value;
+          setSoundEnabledRaw(event.value);
+          sound.enabled = event.value;
+        }
+      } else if (event.type === "reset") {
+        setSelectedScopeRaw("ALL");
+        soundEnabledRef.current = false;
+        setSoundEnabledRaw(false);
+        sound.enabled = false;
+      } else if (event.type === "import") {
+        syncSettingsFromDb();
+      }
     });
 
     // 仅当用户直接打开根路径或 #/dashboard 时才触发启动自动恢复，避免覆盖刷新/深链 Hash
@@ -232,15 +286,21 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
       const isLandingRoot = !rawHash || rawHash === "#" || rawHash === "#/" || rawHash === "#/dashboard";
       if (isLandingRoot) {
         getSetting<boolean>("auto_resume_on_startup", false).then(autoResume => {
+          if (cancelled) return;
           if (autoResume) {
             const session = getLastSession();
             if (session && session.view !== "dashboard") {
               resumeSession(session);
             }
           }
-        });
+        }).catch(() => {});
       }
     }
+
+    return () => {
+      cancelled = true;
+      unsubscribeDb();
+    };
   }, [resumeSession]);
 
   // ── Theme side-effect ──
@@ -251,7 +311,11 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
   // ── URL Hash → State（浏览器前进/后退） ──
   useEffect(() => {
     const onHashChange = () => {
-      if (isSyncingHash.current) return;
+      if (lastSyncedHashRef.current !== null && window.location.hash === lastSyncedHashRef.current) {
+        lastSyncedHashRef.current = null;
+        return;
+      }
+      lastSyncedHashRef.current = null;
       const route = parseHashRoute(window.location.hash);
       setCurrentViewRaw(route.view);
       if (route.articleId) {
@@ -269,12 +333,8 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
   const syncHashToUrl = useCallback((view: NavView, articleId?: string) => {
     const newHash = formatHashRoute(view, ARTICLE_VIEWS.has(view) ? articleId : undefined);
     if (window.location.hash !== newHash) {
-      isSyncingHash.current = true;
+      lastSyncedHashRef.current = newHash;
       window.location.hash = newHash;
-      // hashchange 事件是同步的，但也可能在下一微任务触发
-      requestAnimationFrame(() => {
-        isSyncingHash.current = false;
-      });
     }
   }, []);
 
@@ -294,7 +354,7 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
 
   const setSelectedScope = useCallback((scope: string) => {
     setSelectedScopeRaw(scope);
-    setSetting("selected_scope", scope);
+    void setSetting("selected_scope", scope);
   }, []);
 
   const setActiveArticleId = useCallback((id: string) => {
@@ -308,12 +368,11 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
   }, []);
 
   const toggleSound = useCallback(() => {
-    setSoundEnabledRaw(prev => {
-      const next = !prev;
-      sound.enabled = next;
-      setSetting("sound_enabled", next);
-      return next;
-    });
+    const next = !soundEnabledRef.current;
+    soundEnabledRef.current = next;
+    setSoundEnabledRaw(next);
+    sound.enabled = next;
+    void setSetting("sound_enabled", next);
   }, []);
 
   const toggleShortcuts = useCallback(() => {
@@ -324,12 +383,31 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     setShowCommandPalette(prev => !prev);
   }, []);
 
-  const navigateToArticle = useCallback((articleId: string, view: NavView) => {
+  const navigateToArticle = useCallback((articleId: string, view: NavView, extra?: SessionExtra) => {
     if (isValidArticleId(articleId)) {
       setActiveArticleIdRaw(articleId);
     }
-    setResumeExtra(undefined);
+    setResumeExtra(extra);
     setCurrentViewRaw(view);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const registerModalOpen = useCallback((id: string, isOpen: boolean) => {
+    const set = openModalIdsRef.current;
+    const prevSize = set.size;
+    if (isOpen) {
+      set.add(id);
+    } else {
+      set.delete(id);
+    }
+    if (set.size !== prevSize) {
+      setLocalModalCount(set.size);
+    }
+  }, []);
+
+  const startRescueFlipCard = useCallback(() => {
+    setResumeExtra({ queueMode: "rescue" });
+    setCurrentViewRaw("flipcard");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -344,6 +422,7 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     soundEnabled,
     showShortcuts,
     showCommandPalette,
+    localModalCount,
     // Actions
     setCurrentView,
     setSelectedScope,
@@ -356,6 +435,8 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     toggleCommandPalette,
     setShowCommandPalette,
     navigateToArticle,
+    registerModalOpen,
+    startRescueFlipCard,
     resumeSession,
   }), [
     currentView,
@@ -366,6 +447,7 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     soundEnabled,
     showShortcuts,
     showCommandPalette,
+    localModalCount,
     setCurrentView,
     setSelectedScope,
     setActiveArticleId,
@@ -374,6 +456,8 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
     toggleShortcuts,
     toggleCommandPalette,
     navigateToArticle,
+    registerModalOpen,
+    startRescueFlipCard,
     resumeSession,
   ]);
 
@@ -391,6 +475,24 @@ export const StudyAppProvider: React.FC<StudyAppProviderProps> = ({ children }) 
  */
 export function useOptionalStudyApp(): StudyAppContextValue | null {
   return useContext(StudyAppContext);
+}
+
+/**
+ * 向 StudyAppContext 注册局部模态框的打开状态，防止后台全局快捷键误触发。
+ * 在无 Provider 的独立测试/渲染环境中安全降级为 no-op。
+ */
+export function useRegisterModalOpen(isOpen: boolean): void {
+  const appCtx = useOptionalStudyApp();
+  const modalId = useId();
+  const registerModalOpen = appCtx?.registerModalOpen;
+
+  useEffect(() => {
+    if (!registerModalOpen) return;
+    registerModalOpen(modalId, isOpen);
+    return () => {
+      registerModalOpen(modalId, false);
+    };
+  }, [registerModalOpen, modalId, isOpen]);
 }
 
 /**

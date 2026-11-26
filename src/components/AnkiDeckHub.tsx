@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { Article, ALL_ARTICLES } from "../data/curriculumData";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { ARTICLE_INDEX } from "../data/curriculumIndex";
 import {
   VOLUME_DECKS,
   SPECIAL_DECKS,
@@ -11,7 +11,11 @@ import {
 } from "../data/ankiDecks";
 import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
 import { SchedulerSettings, DailySchedulePlan } from "../domain/fsrs/ankiScheduler";
+import { buildRescueFlashcardQueue } from "../domain/fsrs/rescueQueue";
 import { NavView } from "./Navbar";
+import { useStudyStore, studyStore } from "../storage/studyStore";
+import { useRegisterModalOpen } from "../state/StudyAppContext";
+import { getLocalDateString } from "../utils/date";
 import {
   ChevronDown,
   ChevronRight,
@@ -29,11 +33,12 @@ import {
   X,
   Check,
   Flame,
-  ArrowRight
+  ArrowRight,
+  ShieldAlert
 } from "lucide-react";
 
 interface AnkiDeckHubProps {
-  cardStatesMap: Map<string, CardFsrsState>;
+  cardStatesMap?: Map<string, CardFsrsState>;
   schedulerSettings: SchedulerSettings;
   onUpdateSettings: (newSettings: SchedulerSettings) => void;
   dailyPlan: DailySchedulePlan;
@@ -46,24 +51,7 @@ interface AnkiDeckHubProps {
 const EXPANDED_DECKS_STORAGE_KEY = "wenyan_anki_expanded_decks";
 
 function getStoredExpandedDecks(activeArticleId?: string, activeDeckId?: string): Set<string> {
-  const set = new Set<string>();
-
-  // 1. Load user's saved expanded decks from localStorage
-  if (typeof window !== "undefined" && window.localStorage) {
-    try {
-      const raw = localStorage.getItem(EXPANDED_DECKS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          parsed.forEach(id => {
-            if (typeof id === "string") set.add(id);
-          });
-        }
-      }
-    } catch {
-      // Ignore JSON parse errors
-    }
-  }
+  const set = new Set<string>(studyStore.getExpandedDecks());
 
   // 2. If there is an active article or deck from current/previous study, ensure its volume is expanded
   if (activeArticleId) {
@@ -82,7 +70,7 @@ function getStoredExpandedDecks(activeArticleId?: string, activeDeckId?: string)
 }
 
 export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
-  cardStatesMap,
+  cardStatesMap: propCardStatesMap,
   schedulerSettings,
   onUpdateSettings,
   dailyPlan,
@@ -91,10 +79,51 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
   activeArticleId,
   activeDeckId
 }) => {
-  // Expanded volume deck IDs (restored from previous session / localStorage)
+  const {
+    cards: storeCards,
+    dailyRecords: dailyRecordsMap,
+    bottlenecks: bottlenecksMap,
+    settings: storeSettings,
+    hydrated: storeHydrated
+  } = useStudyStore();
+
+  const cardStatesMap = useMemo(() => {
+    if (storeHydrated || storeCards.size > 0 || !propCardStatesMap) {
+      return storeCards;
+    }
+    return propCardStatesMap;
+  }, [storeHydrated, storeCards, propCardStatesMap]);
+
+  // Expanded volume deck IDs (restored from unified StudyStore / localStorage mirror)
   const [expandedDecks, setExpandedDecks] = useState<Set<string>>(() =>
     getStoredExpandedDecks(activeArticleId, activeDeckId)
   );
+  const hasHydratedExpandedRef = useRef(false);
+  const expandedDecksSetting = storeSettings.get("expanded_decks");
+
+  // Sync expanded decks on initial hydration or external backup import, without overriding user collapse
+  useEffect(() => {
+    if (!storeHydrated || !storeSettings.has("expanded_decks")) return;
+    const saved = studyStore.getExpandedDecks();
+    const isInitialHydration = !hasHydratedExpandedRef.current;
+    hasHydratedExpandedRef.current = true;
+
+    setExpandedDecks(prev => {
+      const next = new Set(saved);
+      if (isInitialHydration) {
+        if (activeArticleId) {
+          const vol = getVolumeForArticle(activeArticleId);
+          if (vol) next.add(vol.id);
+        } else if (activeDeckId && activeDeckId.startsWith("VOL_")) {
+          next.add(activeDeckId);
+        }
+      }
+      if (prev.size === next.size && Array.from(prev).every(id => next.has(id))) {
+        return prev;
+      }
+      return next;
+    });
+  }, [storeHydrated, expandedDecksSetting]);
 
   // Sync expanded deck when activeArticleId or activeDeckId changes
   useEffect(() => {
@@ -111,11 +140,7 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
         if (!prev.has(targetVolId!)) {
           const next = new Set(prev);
           next.add(targetVolId!);
-          if (typeof window !== "undefined" && window.localStorage) {
-            try {
-              localStorage.setItem(EXPANDED_DECKS_STORAGE_KEY, JSON.stringify(Array.from(next)));
-            } catch {}
-          }
+          studyStore.setExpandedDecks(next);
           return next;
         }
         return prev;
@@ -127,7 +152,22 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempSettings, setTempSettings] = useState<SchedulerSettings>(schedulerSettings);
 
-  const now = Date.now();
+  useRegisterModalOpen(isSettingsOpen);
+
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setIsSettingsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSettingsOpen]);
+
+  const now = useMemo(() => Date.now(), [cardStatesMap]);
+  const todayStudiedCount = dailyRecordsMap.get(getLocalDateString())?.count ?? 0;
 
   const toggleDeckExpand = (deckId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -138,11 +178,7 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
       } else {
         next.add(deckId);
       }
-      if (typeof window !== "undefined" && window.localStorage) {
-        try {
-          localStorage.setItem(EXPANDED_DECKS_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {}
-      }
+      studyStore.setExpandedDecks(next);
       return next;
     });
   };
@@ -160,7 +196,7 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
   // Compute stats for all 6 volume decks
   const volumeStatsList = useMemo(() => {
     return VOLUME_DECKS.map(vol => {
-      const arts = ALL_ARTICLES.filter(a => vol.moduleIds.includes(a.moduleId));
+      const arts = ARTICLE_INDEX.filter(a => vol.moduleIds.includes(a.moduleId));
       return {
         volume: vol,
         articles: arts,
@@ -171,12 +207,21 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
 
   // Compute stats for special decks
   const gaokaoStats = useMemo(() => {
-    const arts = ALL_ARTICLES.filter(a => a.isGaoKao72);
+    const arts = ARTICLE_INDEX.filter(a => a.isGaoKao72);
     return computeDeckStats("DECK_GAOKAO72", "★ 高考必背 72 篇专项", arts, cardStatesMap, now);
   }, [cardStatesMap, now]);
 
+  const rescueCards = useMemo(() => {
+    return buildRescueFlashcardQueue({
+      bottlenecks: bottlenecksMap,
+      cramRatings: studyStore.getCramRatings(),
+      scenarioWrongItems: studyStore.getScenarioWrongItems(),
+      cardStatesMap
+    });
+  }, [bottlenecksMap, storeSettings, cardStatesMap]);
+
   const allDeckStats = useMemo(() => {
-    return computeDeckStats("DECK_ALL", "全套 11 册教材全部名篇", ALL_ARTICLES, cardStatesMap, now);
+    return computeDeckStats("DECK_ALL", "全套 11 册教材全部名篇", ARTICLE_INDEX, cardStatesMap, now);
   }, [cardStatesMap, now]);
 
   // Filtered volumes based on top segment tabs
@@ -287,7 +332,8 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
           <div className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
             <span>
-              已为您自动调度：今日共需背诵 <strong>{dailyPlan.totalTargetCards}</strong> 句词句，无需费脑规划。
+              已为您自动调度：今日共需背诵 <strong>{dailyPlan.totalTargetCards}</strong> 句词句
+              {todayStudiedCount > 0 ? `（今日已完成 ${todayStudiedCount} 次）` : "，无需费脑规划。"}
             </span>
           </div>
 
@@ -324,16 +370,31 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
           ))}
         </div>
 
-        <button
-          onClick={() => onStartStudyDeck("DECK_GAOKAO72")}
-          className="px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 font-medium flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
-        >
-          <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-          <span>高考必背 72 篇专项牌组</span>
-          <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-amber-200/60 dark:bg-amber-800 text-amber-900 dark:text-amber-100 font-bold">
-            {gaokaoStats.totalCards} 句
-          </span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onStartStudyDeck("DECK_RESCUE")}
+            disabled={rescueCards.length === 0}
+            className={`px-3 py-1.5 rounded-xl border font-medium flex items-center gap-1.5 transition-colors ${
+              rescueCards.length > 0
+                ? "border-red-300 dark:border-red-800/80 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
+                : "border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600 cursor-not-allowed"
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>高频卡壳急救 ({rescueCards.length} 张)</span>
+          </button>
+
+          <button
+            onClick={() => onStartStudyDeck("DECK_GAOKAO72")}
+            className="px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200 font-medium flex items-center gap-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+          >
+            <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            <span>高考必背 72 篇专项牌组</span>
+            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-amber-200/60 dark:bg-amber-800 text-amber-900 dark:text-amber-100 font-bold">
+              {gaokaoStats.totalCards} 句
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* 3. Classic Anki Deck Tree Table */}
@@ -442,6 +503,7 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
                   <div className="bg-zinc-50/60 dark:bg-zinc-950/40 border-t border-zinc-100 dark:border-zinc-800/60 divide-y divide-zinc-100/80 dark:divide-zinc-800/40">
                     {articles.map((art) => {
                       const artStats = computeDeckStats(art.id, art.title, [art], cardStatesMap, now);
+                      const artBottleneckCount = bottlenecksMap.get(art.id)?.length ?? 0;
                       return (
                         <div
                           key={art.id}
@@ -460,6 +522,11 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
                             {art.isGaoKao72 && (
                               <span className="text-[9px] font-mono px-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-semibold">
                                 高考
+                              </span>
+                            )}
+                            {artBottleneckCount > 0 && (
+                              <span className="text-[9px] font-mono px-1 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-medium">
+                                卡壳 {artBottleneckCount}
                               </span>
                             )}
                           </div>
@@ -554,8 +621,17 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
 
       {/* 4. Quick Scheduler Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs"
+          onClick={() => setIsSettingsOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Anki 智能排程配额设置"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
+          >
             <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
               <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-zinc-500" />

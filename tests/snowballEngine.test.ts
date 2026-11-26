@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { SnowballChainingEngine } from "../src/domain/cloze/snowballEngine";
+import {
+  SnowballChainingEngine,
+  SnowballStage,
+  buildSnowballCompletionPlan,
+} from "../src/domain/cloze/snowballEngine";
+import { FSRSEngine } from "../src/domain/fsrs/fsrsEngine";
 import { ALL_ARTICLES, Article } from "../src/data/curriculumData";
 import * as flashcardGen from "../src/data/flashcardGenerator";
 
@@ -127,5 +132,84 @@ describe("SnowballChainingEngine", () => {
         expect(stage.progressRatio).toBeLessThanOrEqual(1.0);
       }
     }
+  });
+
+  it("strips 【填空正解】 and 【对句】 markers before stripping 【 and 】 brackets", () => {
+    const mockArticle: Article = {
+      id: "art_clean_test",
+      moduleId: "MODULE_TEST",
+      title: "清理测试",
+      subtitle: null,
+      author: "测试",
+      dynasty: "唐代",
+      genre: "诗",
+      isGaoKao72: false,
+      recitationScope: "自选",
+      fullContent: "大江东去，浪淘尽。",
+      paragraphs: ["大江东去，浪淘尽。"],
+      translation: null,
+      annotations: [],
+      sortOrder: 1,
+      totalSegments: 1,
+      totalCards: 1,
+    };
+
+    vi.spyOn(flashcardGen, "generateFlashcardsForArticle").mockReturnValue([
+      {
+        id: "fc_clean_1",
+        articleId: "art_clean_test",
+        segmentId: "seg_clean_0",
+        cardType: "FULL_SENTENCE_RECALL",
+        frontTitle: "清理测试",
+        frontPrompt: "【填空默写】",
+        frontHint: null,
+        backAnswer: "【填空正解】大江东去",
+        backTranslation: null,
+        backNotes: null,
+        isPrimary: true,
+        clozeIndex: 1,
+        totalClozes: 1,
+        fullVerseContext: "【填空正解】【大江东去】，【对句】浪淘尽⟦ ________ ⟧",
+        maskedSegment: "大江东去",
+        unitIndex: 0,
+        totalUnits: 1,
+        precedingClauseHint: null,
+      },
+    ]);
+
+    const stages = SnowballChainingEngine.buildStages(mockArticle);
+    expect(stages).toHaveLength(1);
+    expect(stages[0].newlyAddedUnit.text).toBe("大江东去，浪淘尽");
+  });
+
+  it("excludes skipped or duplicate stages from bottleneckCount and computes smoothCount from updatedCards", () => {
+    const article = ALL_ARTICLES[0];
+    const unit0 = { index: 0, text: "首句", cardIds: ["c1"], segmentId: "seg_0", primaryCardId: "c1" };
+    const unit1Dup = { index: 1, text: "重复段", cardIds: ["c1"], segmentId: "seg_0", primaryCardId: "c1" };
+    const unit2Empty = { index: 2, text: "无卡段", cardIds: [], segmentId: "seg_empty", primaryCardId: null };
+    const unit3 = { index: 3, text: "末句", cardIds: ["c2"], segmentId: "seg_1", primaryCardId: "c2" };
+
+    const stages: SnowballStage[] = [
+      { stageIndex: 0, totalStages: 4, newlyAddedUnit: unit0, chainUnits: [unit0], progressRatio: 0.25 },
+      { stageIndex: 1, totalStages: 4, newlyAddedUnit: unit1Dup, chainUnits: [unit0, unit1Dup], progressRatio: 0.5 },
+      { stageIndex: 2, totalStages: 4, newlyAddedUnit: unit2Empty, chainUnits: [unit0, unit1Dup, unit2Empty], progressRatio: 0.75 },
+      { stageIndex: 3, totalStages: 4, newlyAddedUnit: unit3, chainUnits: [unit0, unit1Dup, unit2Empty, unit3], progressRatio: 1 },
+    ];
+
+    const plan = buildSnowballCompletionPlan({
+      article,
+      stages,
+      // unit1Dup and unit2Empty are marked as bottlenecks, but both are skipped!
+      // Only unit3 is a non-skipped bottleneck; unit0 is smooth.
+      bottleneckIndices: new Set([1, 2, 3]),
+      existingCardStates: new Map(),
+      fsrs: new FSRSEngine(),
+      now: 1770000000000,
+    });
+
+    expect(plan.updatedCards).toHaveLength(2);
+    expect(plan.bottleneckCount).toBe(1);
+    expect(plan.smoothCount).toBe(1);
+    expect(plan.smoothCount + plan.bottleneckCount).toBe(plan.updatedCards.length);
   });
 });

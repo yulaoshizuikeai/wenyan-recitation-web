@@ -1,8 +1,14 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, BookOpen } from "lucide-react";
 import { Article } from "../data/curriculumData";
-import { getUnderstanding } from "../data/articleUnderstanding";
+import {
+  getCachedArticleUnderstanding,
+  isArticleUnderstandingLoaded,
+  loadArticleUnderstanding
+} from "../data/articleUnderstanding";
+import type { ArticleUnderstanding } from "../data/learningContentTypes";
+import { useRegisterModalOpen } from "../state/StudyAppContext";
 
 interface UnderstandingCardProps {
   article: Article;
@@ -39,15 +45,51 @@ export const UnderstandingCard: React.FC<UnderstandingCardProps> = ({
   onClose,
   highlightText
 }) => {
-  const data = getUnderstanding(article.id);
+  const [data, setData] = useState<ArticleUnderstanding | undefined>(
+    () => getCachedArticleUnderstanding(article.id)
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => !isArticleUnderstandingLoaded(article.id)
+  );
+
+  useEffect(() => {
+    if (isArticleUnderstandingLoaded(article.id)) {
+      setData(getCachedArticleUnderstanding(article.id));
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    loadArticleUnderstanding(article.id)
+      .then((loaded) => {
+        if (!cancelled) {
+          setData(loaded);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData(undefined);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [article.id]);
+
+  useRegisterModalOpen(true);
+
   const activeIndex = findParagraphIndex(article.paragraphs, highlightText);
   const activeRef = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
-    if (activeRef.current) {
+    if (data && activeRef.current) {
       activeRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-  }, [activeIndex]);
+  }, [activeIndex, data]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -63,6 +105,9 @@ export const UnderstandingCard: React.FC<UnderstandingCardProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="理解大意"
         className="w-full max-w-lg h-full bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-drawer-in"
         onClick={e => e.stopPropagation()}
       >
@@ -90,7 +135,11 @@ export const UnderstandingCard: React.FC<UnderstandingCardProps> = ({
 
         {/* 内容 */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {!data ? (
+          {isLoading ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 py-8 text-center">
+              正在加载理解内容...
+            </p>
+          ) : !data ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400 py-8 text-center">
               本篇暂无理解内容
             </p>

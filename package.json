@@ -1,11 +1,12 @@
 {
   "name": "wenyan-recitation-web",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "高中语文古诗文 FSRS-5 间隔重复与长篇滚动式串联背诵系统",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "gen:index": "node scripts/generate-curriculum-index.mjs",
+    "build": "node scripts/generate-curriculum-index.mjs && tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "deploy": "wrangler pages deploy dist --project-name wenyan-recitation"
@@ -35,6 +36,7 @@
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.2",
     "wrangler": "^4.165.0"
   }

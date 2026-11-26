@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { ALL_ARTICLES, Article } from "../data/curriculumData";
+import React, { useMemo } from "react";
+import { ARTICLE_INDEX, ARTICLE_INDEX_MAP } from "../data/curriculumIndex";
 import { VOLUME_DECKS, VolumeDeck, computeDeckStats } from "../data/ankiDecks";
 import { Heatmap } from "../components/Heatmap";
-import { getAllCardStates, getDailyRecords } from "../storage/db";
-import { CardFsrsState } from "../domain/fsrs/fsrsTypes";
+import { useStudyStore, studyStore } from "../storage/studyStore";
+import { buildRescueFlashcardQueue } from "../domain/fsrs/rescueQueue";
 import { NavView } from "../components/Navbar";
-import { useLastSession, LastSessionState } from "../storage/sessionTracker";
+import { useLastSession, LastSessionState, SessionExtra } from "../storage/sessionTracker";
 import { PickUpCard } from "../components/PickUpCard";
 import { getLocalDateString } from "../utils/date";
 import { useOptionalStudyApp } from "../state/StudyAppContext";
@@ -20,12 +20,13 @@ import {
   BarChart,
   Play,
   Eye,
-  HelpCircle
+  HelpCircle,
+  ShieldAlert
 } from "lucide-react";
 
 interface DashboardViewProps {
   onNavigate?: (view: NavView) => void;
-  onOpenArticleInView?: (articleId: string, view: NavView) => void;
+  onOpenArticleInView?: (articleId: string, view: NavView, extra?: SessionExtra) => void;
   onResumeSession?: (session: LastSessionState) => void;
   selectedScope?: string;
 }
@@ -42,9 +43,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const onResumeSession = propOnResumeSession ?? appCtx?.resumeSession;
   const selectedScope = propSelectedScope ?? appCtx?.selectedScope ?? "ALL";
 
-  const [cardStates, setCardStates] = useState<CardFsrsState[]>([]);
-  const [dailyRecords, setDailyRecords] = useState<{ date: string; count: number }[]>([]);
+  const { cards: cardStatesMap, dailyRecords: dailyRecordsMap, bottlenecks, settings: storeSettings } = useStudyStore();
   const { lastSession, clearSession } = useLastSession();
+
+  const rescueCards = useMemo(() => {
+    return buildRescueFlashcardQueue({
+      bottlenecks,
+      cramRatings: studyStore.getCramRatings(),
+      scenarioWrongItems: studyStore.getScenarioWrongItems(),
+      cardStatesMap
+    });
+  }, [bottlenecks, storeSettings, cardStatesMap]);
+
+  const cardStates = useMemo(() => Array.from(cardStatesMap.values()), [cardStatesMap]);
+  const dailyRecords = useMemo(() => Array.from(dailyRecordsMap.values()), [dailyRecordsMap]);
+  const totalBottlenecks = useMemo(() => {
+    let count = 0;
+    for (const indices of bottlenecks.values()) {
+      count += indices.length;
+    }
+    return count;
+  }, [bottlenecks]);
 
   const handleResume = (session: LastSessionState) => {
     if (onResumeSession) {
@@ -59,8 +78,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const handleRestart = (session: LastSessionState) => {
-    if (session.articleId) {
-      localStorage.removeItem(`snowball_stage_${session.articleId}`);
+    if (session.articleId && session.view === "snowball") {
+      studyStore.setSnowballStage(session.articleId, 0);
     }
     handleResume({
       ...session,
@@ -72,7 +91,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         cardIndex: 0,
         goldenVerseIndex: 0,
         scenarioQuestionIndex: 0,
-        clozeLevel: 0
+        clozeLevel: 1
       }
     });
   };
@@ -80,11 +99,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const handleDismiss = () => {
     clearSession();
   };
-
-  useEffect(() => {
-    getAllCardStates().then(setCardStates);
-    getDailyRecords().then(setDailyRecords);
-  }, []);
 
   const totalReviews = useMemo(() => {
     return dailyRecords.reduce((acc, r) => acc + r.count, 0);
@@ -142,25 +156,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // High-frequency classical articles recommended for today
   const recommendedArticles = useMemo(() => {
     return [
-      ALL_ARTICLES.find(a => a.id === "art_bx1_12")!, // 劝学
-      ALL_ARTICLES.find(a => a.id === "art_bx1_13")!, // 师说
-      ALL_ARTICLES.find(a => a.id === "art_bx1_14")!, // 赤壁赋
-      ALL_ARTICLES.find(a => a.id === "art_bx1_08")!, // 琵琶行并序
-      ALL_ARTICLES.find(a => a.id === "art_xb1_07")!, // 离骚
-      ALL_ARTICLES.find(a => a.id === "art_xb3_11")!  // 阿房宫赋
+      ARTICLE_INDEX_MAP["art_bx1_12"], // 劝学
+      ARTICLE_INDEX_MAP["art_bx1_13"], // 师说
+      ARTICLE_INDEX_MAP["art_bx1_14"], // 赤壁赋
+      ARTICLE_INDEX_MAP["art_bx1_08"], // 琵琶行并序
+      ARTICLE_INDEX_MAP["art_xb1_07"], // 离骚
+      ARTICLE_INDEX_MAP["art_xb3_11"]  // 阿房宫赋
     ].filter(Boolean);
   }, []);
-
-  const cardStatesMap = useMemo(() => {
-    const map = new Map<string, CardFsrsState>();
-    cardStates.forEach(s => map.set(s.cardId, s));
-    return map;
-  }, [cardStates]);
 
   const volumeDeckSummaries = useMemo(() => {
     const now = Date.now();
     return VOLUME_DECKS.map(vol => {
-      const arts = ALL_ARTICLES.filter(a => vol.moduleIds.includes(a.moduleId));
+      const arts = ARTICLE_INDEX.filter(a => vol.moduleIds.includes(a.moduleId));
       const stats = computeDeckStats(vol.id, vol.name, arts, cardStatesMap, now);
       return {
         volume: vol,
@@ -241,7 +249,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onClick={() => onNavigate("flipcard")}
             role="button"
             tabIndex={0}
-            onKeyDown={e => (e.key === "Enter" || e.key === " ") && onNavigate("flipcard")}
+            onKeyDown={e => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onNavigate("flipcard");
+              }
+            }}
             className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 rounded-2xl p-4 shadow-2xs flex flex-col justify-between cursor-pointer transition-colors group"
           >
             <div className="flex items-center justify-between text-xs text-zinc-400">
@@ -287,7 +300,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Quick Mode Launcher Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
-          { id: "snowball" as const, title: "长卷滚雪球", desc: "逐联递推串联长篇", icon: <Layers className="w-4 h-4" /> },
+          { id: "snowball" as const, title: "长卷滚雪球", desc: totalBottlenecks > 0 ? `逐联串联 · 含 ${totalBottlenecks} 处卡壳` : "逐联递推串联长篇", icon: <Layers className="w-4 h-4" /> },
           { id: "flipcard" as const, title: "牌组闪卡", desc: "FSRS 间隔重复", icon: <Sparkles className="w-4 h-4" />, badge: dueCardsCount > 0 ? dueCardsCount : undefined },
           { id: "cloze" as const, title: "渐进遮挡", desc: "L0-L4 挖空自测", icon: <Eye className="w-4 h-4" /> },
           { id: "cram" as const, title: "考前抱佛脚", desc: "高频金句突击", icon: <Flame className="w-4 h-4 text-red-500" /> },
@@ -315,6 +328,52 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">{mode.desc}</p>
           </button>
         ))}
+      </div>
+
+      {/* High-Frequency Bottleneck Rescue Pack */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl px-4 py-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`p-2 rounded-xl shrink-0 ${
+            rescueCards.length > 0
+              ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400"
+              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400"
+          }`}>
+            <ShieldAlert className="w-4 h-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <span>高频卡壳急救队列</span>
+              <span className={`font-mono text-[10px] px-1.5 py-0.2 rounded-full ${
+                rescueCards.length > 0
+                  ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+              }`}>
+                {rescueCards.length} 张
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">
+              自动汇集滚雪球卡壳点、抱佛脚「卡住」句与高考默写错题
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            if (appCtx?.startRescueFlipCard) {
+              appCtx.startRescueFlipCard();
+            } else {
+              onNavigate("flipcard");
+            }
+          }}
+          disabled={rescueCards.length === 0}
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 ${
+            rescueCards.length > 0
+              ? "bg-red-600 hover:bg-red-700 text-white active:scale-[0.98] shadow-2xs"
+              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed"
+          }`}
+        >
+          <Play className="w-3.5 h-3.5 fill-current" />
+          <span>高频卡壳急救 ({rescueCards.length} 张)</span>
+        </button>
       </div>
 
       {/* Recitation Heatmap */}
@@ -348,11 +407,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 key={volume.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard")}
+                onClick={() =>
+                  onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard", {
+                    queueMode: "deck",
+                    deckId: volume.id,
+                    autoStart: true
+                  })
+                }
                 onKeyDown={e => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard");
+                    onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard", {
+                      queueMode: "deck",
+                      deckId: volume.id,
+                      autoStart: true
+                    });
                   }
                 }}
                 className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800/60 hover:shadow-2xs active:scale-[0.995] cursor-pointer transition-all flex flex-col justify-between group"
@@ -431,8 +500,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <h3 className="text-sm font-classical font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
                   《{article.title}》
                 </h3>
-                <p className="text-xs font-classical text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-3">
-                  {article.fullContent}
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                  {article.book} · {article.genre} · {article.charCount} 字
                 </p>
               </div>
 

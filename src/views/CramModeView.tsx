@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   CORE_GOLDEN_VERSES,
   getGoldenVerseModules,
@@ -7,6 +7,7 @@ import {
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
+import { useStudyStore, studyStore } from "../storage/studyStore";
 import { CramCardPractice, CramRating } from "../components/cram/CramCardPractice";
 import { CramReferenceList } from "../components/cram/CramReferenceList";
 import { CramHeaderFilters } from "../components/cram/CramHeaderFilters";
@@ -19,8 +20,6 @@ interface CramModeViewProps {
   onOpenArticleInView?: (articleId: string, view: any) => void;
   resumeExtra?: SessionExtra;
 }
-
-const STORAGE_KEY_RATINGS = "wenyan_cram_ratings";
 
 export const CramModeView: React.FC<CramModeViewProps> = ({
   onOpenArticleInView: _onOpenArticleInView,
@@ -36,14 +35,11 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
     () => resumeExtra?.viewStyle || "card"
   );
   const [onlyWeak, setOnlyWeak] = useState<boolean>(false);
-  const [ratings, setRatings] = useState<Record<string, CramRating>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_RATINGS);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const { settings: storeSettings, hydrated: storeHydrated } = useStudyStore();
+  const ratings = useMemo<Record<string, CramRating>>(
+    () => studyStore.getCramRatings() as Record<string, CramRating>,
+    [storeSettings, storeHydrated]
+  );
 
   // Card view state
   const [currentIndex, setCurrentIndex] = useState<number>(() => {
@@ -131,17 +127,9 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
     });
   }, [currentIndex, activeModule, viewStyle, filteredVerses, currentVerse]);
 
-  // Persist ratings to localStorage
+  // Persist ratings optimistically via unified StudyStore (+ localStorage mirror)
   const handleRate = useCallback((verseId: string, rating: CramRating) => {
-    setRatings((prev) => {
-      const next = { ...prev, [verseId]: rating };
-      try {
-        localStorage.setItem(STORAGE_KEY_RATINGS, JSON.stringify(next));
-      } catch (e) {
-        console.error(e);
-      }
-      return next;
-    });
+    studyStore.setCramRating(verseId, rating);
 
     if (rating === "mastered") sound.playCorrect();
     else if (rating === "stuck") sound.playWrong();
@@ -172,12 +160,54 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
     sound.playFlip();
   }, []);
 
+  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAdvanceTimer = useCallback(() => {
+    if (advanceTimerRef.current !== null) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+  }, []);
+
+  // Cancel pending auto-advance timer when viewStyle or filters change
+  useEffect(() => {
+    clearAdvanceTimer();
+  }, [viewStyle, activeModule, searchQuery, onlyWeak, isShuffled, clearAdvanceTimer]);
+
+  // Cancel pending timer and speechSynthesis on unmount
+  useEffect(() => {
+    return () => {
+      clearAdvanceTimer();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [clearAdvanceTimer]);
+
   const handleRateAndAdvance = useCallback(
     (verseId: string, rating: CramRating) => {
+      clearAdvanceTimer();
       handleRate(verseId, rating);
-      setTimeout(handleNext, 180);
+
+      if (onlyWeak && rating === "mastered") {
+        setIsFlipped(false);
+        const wasLastItem = currentIndex >= filteredVerses.length - 1;
+        if (wasLastItem) {
+          advanceTimerRef.current = setTimeout(() => {
+            advanceTimerRef.current = null;
+            sound.playCelebration();
+            fireConfetti();
+          }, 180);
+        }
+        return;
+      }
+
+      advanceTimerRef.current = setTimeout(() => {
+        advanceTimerRef.current = null;
+        handleNext();
+      }, 180);
     },
-    [handleRate, handleNext]
+    [clearAdvanceTimer, handleRate, onlyWeak, currentIndex, filteredVerses.length, handleNext]
   );
 
   const handleToggleShuffle = () => {
@@ -255,11 +285,13 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
         onSearchChange={(q) => {
           setSearchQuery(q);
           setCurrentIndex(0);
+          setIsFlipped(false);
         }}
         onlyWeak={onlyWeak}
         onToggleOnlyWeak={() => {
           setOnlyWeak((prev) => !prev);
           setCurrentIndex(0);
+          setIsFlipped(false);
         }}
         weakCount={weakCount}
         isShuffled={isShuffled}
@@ -315,6 +347,8 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
               setActiveModule("ALL");
               setSearchQuery("");
               setOnlyWeak(false);
+              setCurrentIndex(0);
+              setIsFlipped(false);
             }}
             className="text-xs text-red-600 dark:text-red-400 hover:underline"
           >

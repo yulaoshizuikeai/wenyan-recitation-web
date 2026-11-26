@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ALL_ARTICLES } from "../data/curriculumData";
+import { ARTICLE_INDEX_MAP } from "../data/curriculumIndex";
+import type { Article } from "../data/curriculumTypes";
+import { getCachedArticleById, loadArticleById } from "../data/curriculumLoader";
 import { VOLUME_DECKS, SPECIAL_DECKS, getVolumeForArticle } from "../data/ankiDecks";
 import { Rating } from "../domain/fsrs/fsrsTypes";
 import { SessionExtra } from "../storage/sessionTracker";
@@ -18,6 +20,7 @@ import {
   Shuffle,
   ArrowLeft,
   Volume2,
+  ShieldAlert,
 } from "lucide-react";
 
 interface FlipCardViewProps {
@@ -47,7 +50,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
     queueMode, selectedArticleId, sessionCards, currentIndex, currentFlashcard,
     isFlipped, currentCardState, intervalBadges, completedCount, sessionFinished,
     hasRestoredNotice, setHasRestoredNotice, remainingInSession, newCardsAll,
-    dueCardsAll, cardStatesMap, dailyPlan, targetArticles, sequentialMode,
+    dueCardsAll, rescueCards, cardStatesMap, dailyPlan, targetArticles, sequentialMode,
     toggleSequentialMode, showPrecedingHint, togglePrecedingHint, typingMode,
     toggleTypingMode, handleFlip, handleRate, handleSwitchMode, handleSelectArticle,
     handleResetIndex, handleStartStudyDeck, handleUpdateSettings, refreshCardStates,
@@ -57,10 +60,26 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
 
   // Keyboard shortcut listener for space/enter (flip) and 1-4 (ratings)
   useEffect(() => {
-    if (viewMode !== "study" || isGlobalModalOpen || showPhonetics || showUnderstanding) return;
+    if (
+      viewMode !== "study" ||
+      sessionFinished ||
+      sessionCards.length === 0 ||
+      !currentFlashcard ||
+      isGlobalModalOpen ||
+      showPhonetics ||
+      showUnderstanding
+    ) {
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
         return;
       }
       if (e.altKey || e.ctrlKey || e.metaKey) return;
@@ -72,6 +91,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
         e.preventDefault();
         togglePrecedingHint();
       } else if (isFlipped) {
+        if (e.repeat) return;
         if (e.key === "1") handleRate(Rating.AGAIN);
         else if (e.key === "2") handleRate(Rating.HARD);
         else if (e.key === "3") handleRate(Rating.GOOD);
@@ -83,6 +103,8 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     viewMode,
+    sessionFinished,
+    sessionCards.length,
     isGlobalModalOpen,
     showPhonetics,
     showUnderstanding,
@@ -97,10 +119,33 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
   // Active article / volume for breadcrumbs and sidebar
   const activeArticleObj = useMemo(() => {
     if (currentFlashcard) {
-      return ALL_ARTICLES.find((a) => a.id === currentFlashcard.articleId);
+      return ARTICLE_INDEX_MAP[currentFlashcard.articleId];
     }
-    return activeArticleId ? ALL_ARTICLES.find((a) => a.id === activeArticleId) : undefined;
+    return activeArticleId ? ARTICLE_INDEX_MAP[activeArticleId] : undefined;
   }, [currentFlashcard, activeArticleId]);
+
+  const [activeFullArticle, setActiveFullArticle] = useState<Article | undefined>(() =>
+    activeArticleObj ? getCachedArticleById(activeArticleObj.id) : undefined
+  );
+
+  useEffect(() => {
+    if (!activeArticleObj) {
+      setActiveFullArticle(undefined);
+      return;
+    }
+    const cached = getCachedArticleById(activeArticleObj.id);
+    if (cached) {
+      setActiveFullArticle(cached);
+      return;
+    }
+    let cancelled = false;
+    loadArticleById(activeArticleObj.id).then((art) => {
+      if (!cancelled) setActiveFullArticle(art);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeArticleObj?.id]);
 
   const activeVolumeObj = useMemo(() => {
     if (activeArticleObj) {
@@ -130,7 +175,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
       </button>
 
       <div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 font-medium truncate max-w-[200px] sm:max-w-none">
-        <span>{activeVolumeObj?.name || "牌组"}</span>
+        <span>{queueMode === "rescue" ? "高频卡壳急救" : activeVolumeObj?.name || "牌组"}</span>
         <span>/</span>
         <span className="text-zinc-900 dark:text-zinc-100 font-classical font-semibold truncate">
           {activeArticleObj ? `《${activeArticleObj.title}》` : "全册联背"}
@@ -172,7 +217,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
       mainClassName={viewMode === "study" ? "max-w-xl xl:max-w-none min-w-0 space-y-4 mx-auto xl:mx-0" : "min-w-0"}
       hideSidebar={viewMode !== "study"}
       toolbar={studyToolbar}
-      article={activeArticleObj}
+      article={activeFullArticle}
       sidebarProgressLabel={`第 ${currentIndex + 1} / ${Math.max(1, sessionCards.length)} 张`}
       sidebarProgressPercent={
         sessionCards.length > 0 ? ((currentIndex + 1) / sessionCards.length) * 100 : 0
@@ -209,10 +254,11 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
       {viewMode === "study" && (
         <div>
             {/* Quick Queue Mode Switching Pill */}
-            <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mb-4 text-xs font-medium">
+            <div className="grid grid-cols-5 gap-1 p-1 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl mb-4 text-xs font-medium">
               {([
                 { id: "due" as const, label: "待复习", icon: <Clock className="w-3.5 h-3.5" />, count: dueCardsAll.length, highlight: dueCardsAll.length > 0 },
                 { id: "new" as const, label: "新卡", icon: <Zap className="w-3.5 h-3.5" />, count: newCardsAll.length, highlight: false },
+                { id: "rescue" as const, label: "急救", icon: <ShieldAlert className="w-3.5 h-3.5" />, count: rescueCards.length, highlight: rescueCards.length > 0 },
                 { id: "article" as const, label: "选篇", icon: <BookOpen className="w-3.5 h-3.5" /> },
                 { id: "random" as const, label: "随机抽", icon: <Shuffle className="w-3.5 h-3.5" /> },
               ]).map((tab) => (
@@ -268,12 +314,18 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
               <div className="py-12 text-center bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 shadow-xs">
                 <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
                 <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                  {queueMode === "due" ? "今日暂无待复习闪卡" : "当前选册暂无可学闪卡"}
+                  {queueMode === "rescue"
+                    ? "当前暂无卡壳急救卡片"
+                    : queueMode === "due"
+                      ? "今日暂无待复习闪卡"
+                      : "当前选册暂无可学闪卡"}
                 </h2>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 mb-5">
-                  {queueMode === "due"
-                    ? "当前名句记忆留存良好，FSRS 遗忘曲线排程尚未到期。可学习新卡或返回牌组自选特定篇目。"
-                    : "建议切换其他选册或选择全套教材继续背诵。"}
+                  {queueMode === "rescue"
+                    ? "滚雪球卡壳点、抱佛脚「卡住」标记与高考默写错题会自动汇入此处。"
+                    : queueMode === "due"
+                      ? "当前名句记忆留存良好，FSRS 遗忘曲线排程尚未到期。可学习新卡或返回牌组自选特定篇目。"
+                      : "建议切换其他选册或选择全套教材继续背诵。"}
                 </p>
                 <div className="flex gap-2 justify-center">
                   <button
@@ -295,7 +347,12 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
                 completedCount={completedCount}
                 enableSessionLoop={schedulerSettings.enableSessionLoop}
                 dailyNewLimit={schedulerSettings.dailyNewLimit || 20}
-                onStartNextGroup={() => handleStartStudyDeck(activeDeckId, activeArticleId)}
+                articleId={queueMode === "article" ? selectedArticleId : activeArticleId}
+                onStartNextGroup={() =>
+                  queueMode === "deck"
+                    ? handleStartStudyDeck(activeDeckId, activeArticleId)
+                    : handleSwitchMode(queueMode)
+                }
                 onReturnToDeckHub={returnToDeckHub}
               />
             ) : (

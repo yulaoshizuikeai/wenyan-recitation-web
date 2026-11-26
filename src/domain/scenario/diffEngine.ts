@@ -40,12 +40,14 @@ export function isScenarioMatch(userInput: string, expectedAnswer: string): bool
 }
 
 function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffItem[] {
-  const m = normUser.length;
-  const n = normAns.length;
+  const userChars = Array.from(normUser);
+  const ansChars = Array.from(normAns);
+  const m = userChars.length;
+  const n = ansChars.length;
 
   if (m === 0 && n === 0) return [];
   if (m === 0) {
-    return Array.from(normAns, (ch, j) => ({
+    return ansChars.map((ch, j) => ({
       char: "_",
       expected: ch,
       status: "missing" as const,
@@ -53,7 +55,7 @@ function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffIte
     }));
   }
   if (n === 0) {
-    return Array.from(normUser, ch => ({
+    return userChars.map(ch => ({
       char: ch,
       status: "extra" as const,
       afterAnsIndex: -1
@@ -66,9 +68,9 @@ function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffIte
   for (let j = 0; j <= n; j++) dp[0][j] = j;
 
   for (let i = 1; i <= m; i++) {
-    const uCh = normUser[i - 1];
+    const uCh = userChars[i - 1];
     for (let j = 1; j <= n; j++) {
-      const aCh = normAns[j - 1];
+      const aCh = ansChars[j - 1];
       if (uCh === aCh) {
         dp[i][j] = dp[i - 1][j - 1];
       } else {
@@ -87,9 +89,9 @@ function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffIte
   let j = n;
 
   while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && normUser[i - 1] === normAns[j - 1] && dp[i][j] === dp[i - 1][j - 1]) {
+    if (i > 0 && j > 0 && userChars[i - 1] === ansChars[j - 1] && dp[i][j] === dp[i - 1][j - 1]) {
       reversed.push({
-        char: normUser[i - 1],
+        char: userChars[i - 1],
         status: "correct",
         ansIndex: j - 1
       });
@@ -97,8 +99,8 @@ function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffIte
       j--;
     } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
       reversed.push({
-        char: normUser[i - 1],
-        expected: normAns[j - 1],
+        char: userChars[i - 1],
+        expected: ansChars[j - 1],
         status: "wrong",
         ansIndex: j - 1
       });
@@ -107,14 +109,14 @@ function alignNormalizedTexts(normUser: string, normAns: string): AlignedDiffIte
     } else if (j > 0 && dp[i][j] === dp[i][j - 1] + 1) {
       reversed.push({
         char: "_",
-        expected: normAns[j - 1],
+        expected: ansChars[j - 1],
         status: "missing",
         ansIndex: j - 1
       });
       j--;
     } else {
       reversed.push({
-        char: normUser[i - 1],
+        char: userChars[i - 1],
         status: "extra",
         afterAnsIndex: j - 1
       });
@@ -194,8 +196,9 @@ export function findFailedKeyPointIndices(
   const normAns = normalizeScenarioText(expectedAnswer);
   if (normUser === normAns) return [];
 
+  const ansChars = Array.from(normAns);
   const aligned = alignNormalizedTexts(normUser, normAns);
-  const ansStatus = new Array<DiffStatus>(normAns.length);
+  const ansStatus = new Array<DiffStatus>(ansChars.length);
   const extraAfterAns = new Set<number>();
 
   for (const item of aligned) {
@@ -218,12 +221,25 @@ export function findFailedKeyPointIndices(
   keyPoints.forEach((kp, kpIdx) => {
     const target = extractKeyPointTarget(kp);
     if (!target) return;
+    const targetChars = Array.from(target);
+    if (targetChars.length === 0) return;
 
-    const matchStart = normAns.indexOf(target);
-    if (matchStart !== -1) {
-      const matchEnd = matchStart + target.length;
-      let hasError = false;
-      for (let pos = matchStart; pos < matchEnd; pos++) {
+    let foundInAns = false;
+    let hasError = false;
+
+    for (let start = 0; start <= ansChars.length - targetChars.length; start++) {
+      let matches = true;
+      for (let k = 0; k < targetChars.length; k++) {
+        if (ansChars[start + k] !== targetChars[k]) {
+          matches = false;
+          break;
+        }
+      }
+      if (!matches) continue;
+
+      foundInAns = true;
+      const matchEnd = start + targetChars.length;
+      for (let pos = start; pos < matchEnd; pos++) {
         if (ansStatus[pos] !== "correct") {
           hasError = true;
           break;
@@ -234,6 +250,10 @@ export function findFailedKeyPointIndices(
           break;
         }
       }
+      if (hasError) break;
+    }
+
+    if (foundInAns) {
       if (hasError) {
         failedIndices.push(kpIdx);
       }
@@ -241,7 +261,7 @@ export function findFailedKeyPointIndices(
     }
 
     // Fallback: if keyPoint phrasing isn't a verbatim substring, check char overlap with failed expected chars
-    for (const ch of target) {
+    for (const ch of targetChars) {
       if (failedChars.has(ch)) {
         failedIndices.push(kpIdx);
         break;

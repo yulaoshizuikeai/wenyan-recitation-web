@@ -8,12 +8,51 @@
 
 ## [未发布]
 
-### 修复
-
-- **桌面端顶栏导航项与右侧控制区重叠遮挡**：修复在中宽屏（1024px~1360px 宽度区间，如部分笔记本屏幕）下，`Navbar.tsx` 中间导航栏（`flex-1`）与右侧搜索框、接续按钮、教材范围按钮宽度不足互相挤压重叠的样式缺陷。将 `<nav>` 改为 `shrink-0` 锁定基础间距，右侧接续按钮限制在超宽屏 `2xl` 展示，教材范围标签宽度自适应截断（`max-w-[130px] md:max-w-[160px]`），各元素添加 `shrink-0`，彻底根除遮挡。
+## [1.1.0] - 2026-11-26
 
 ### 新增
 
+- **长篇分段滚雪球与段间衔接卡（Track L3.2）**：在 `src/domain/cloze/snowballEngine.ts` 新增 `buildParagraphStages(article, paragraphIndex)`（同步支持 `SnowballChainingEngine.buildStages(article, { paragraphIndex })`）与 `buildBridgeCards(article)`，分别按自然段拆分滚雪球联次、生成「上段末句 → 默写下段首句」跨段接口卡；`buildSnowballCompletionPlan` 改按全局 `newlyAddedUnit.index` 匹配卡壳标记，确保分段结算与全篇卡壳下标一致。在 `src/views/SnowballView.tsx` 中，对 `paragraphs.length >= 3` 的长篇开放「全篇通滚 / 分段攻坚 / 段间衔接」三模切换与段落选择胶囊，支持单段独立结业沉淀 FSRS-5 并接续下一段，同时将卡壳标记、进度持久化与写卡接入 `studyStore`。新增 `tests/snowballParagraph.test.ts` 覆盖分段构建、单段结算与段间衔接卡生成。
+- **跨模式记忆回流与高频卡壳急救包（L3.1）**：新增 `src/domain/fsrs/rescueQueue.ts`（导出 `buildRescueFlashcardQueue`、`buildRescueQueueEntries` 与 `findMatchingFlashcardsForText`）及单元测试 `tests/rescueQueue.test.ts`，聚合滚雪球 `bottlenecks`、抱佛脚 `stuck` 标记与高考情境默写错题，按多信号重合度与最近标记时间去重排序；在 `src/storage/db.ts` 与 `src/storage/studyStore.ts` 中新增 `scenario_wrong_items` 持久化及操作方法；在 `AnkiDeckHub.tsx`、`DashboardView.tsx`、`StudyAppContext.tsx`、`useFlipCardSession.ts` 与 `FlipCardView.tsx` 中接入「高频卡壳急救 (N 张)」一键专练入口与 `"rescue"` 队列模式。
+- **高考默写错题自动降权与热力图联动**：在 `ScenarioView.tsx` 批改核对时调用 `studyStore.recordDailyActivity` 计入每日学习热力图；答错时记录 `scenario_wrong_items` 并对对应篇目/句子的匹配闪卡触发 FSRS `Rating.AGAIN` 降权与提前复习调度，答对时自动清除对应错题记录。
+- **背诵结算联动本篇高考理解性默写（L3.3）**：新增 `src/components/ArticleScenarioLink.tsx`，通过 `getScenarioQuestionsByArticle(articleId)` 检索当前篇目关联的高考情境默写真题，并在 `FlipCardSettlement.tsx` 单篇背诵结算页挂载「顺手做 N 道本篇高考真题」联动入口；同时更新 `FlipCardView.tsx` 传入当前篇目 `articleId`，并在 `ScenarioView.tsx` 中支持按 `activeArticleId` 过滤显示对应篇目真题。
+- **响应式客户端缓存层 `StudyStore`（Phase 3.1）**：新增 `src/storage/studyStore.ts`（导出 `studyStore`、`hydrateStudyStore` 与 `useStudyStore`）。应用启动时在 `StudyAppContext` 异步预水合 IndexedDB 的 `cards`、`daily_records`、`bottlenecks`、`settings` 至内存 `Map`（并发调用自动去重）；评分与进度变更先 0ms 乐观更新内存态并即时驱动各视图派生统计，再按序后台异步落盘，同时监听 `db.ts` 外部写入事件保持跨视图实时一致。
+- **全量备份 Schema v2 与统一本地持久化（Phase 3.3）**：在 `src/storage/db.ts` 中新增 `getAllBottlenecks`、`getAllLogs`、`getAllSettings` 与 `exportAllProgress()`，将 JSON 备份升级至 `version: 2`，完整覆盖 `cards`、`records`、`logs`、`bottlenecks`、`settings` 以及 `localPreferences`（抱佛脚掌握标记、滚雪球进度、牌组展开状态、断点续学记录）；`importAllProgress()` 向下兼容 v1（无版本号或 `"1.0"`）与旧版 `"2.0.0"` 备份并支持全库事务性恢复。首次水合时自动将零散 `localStorage` 键值一次性迁移进统一 `settings` 存储并保留双向镜像。
+- **客户端缓存与备份恢复单元测试**：新增 `tests/studyStoreAndBackup.test.ts`，覆盖 `StudyStore` 乐观更新、`Map` 引用稳定性、并发水合去重、跨模块写入同步、`localStorage` 一次性迁移以及 v1/v2 备份导入导出校验。
+
+### 变更
+
+- **核心视图接入内存缓存 0ms 派生**：`DashboardView.tsx`、`AnkiDeckHub.tsx`、`CatalogView.tsx` 与 `useFlipCardSession.ts` 改用 `useStudyStore()` 直接从内存 `Map` 派生统计与卡壳计数，移除每次挂载重复调用 `getAllCardStates()` 的开销；`CatalogView.tsx` 新增「状态」筛选条（未背诵 / 研习中 / 已熟记 / 含卡壳标记）；`CramModeView.tsx` 接入 `studyStore` 统一管理抱佛脚标记；`SettingsView.tsx` 切换至 `exportAllProgress()` / `importAllProgress()` v2，并在导入或重置后调用 `studyStore.refreshFromDB()` 刷新内存缓存。
+- **全 100 篇理解串讲与难词注音改为按分片动态按需加载**：重构 `src/data/articlePhonetics.ts` 与 `src/data/articleUnderstanding.ts`，抽离 `src/data/learningContentLoader.ts` 维护轻量的 `articleId -> part1~5` 路由表与内存缓存，移除对 `part1~5.ts` 的静态聚合导入；同步更新 `PhoneticsPanel.tsx`、`UnderstandingCard.tsx`、`ClozeView.tsx`、`keywordExtractor.ts`、`flashcardGenerator.ts`、`FlipCardBody.tsx` 与 `tests/dataIntegrity.test.ts`，避免首屏与主工作区静态打包 ~128 KB 串讲注音语料，改为在打开注音/理解抽屉、进入刻漏字或翻转闪卡时按需拉取对应 20 篇分片。
+
+### 修复
+
+- **桌面端顶栏导航项与右侧控制区重叠遮挡**：修复在中宽屏（1024px~1360px 宽度区间，如部分笔记本屏幕）下，`Navbar.tsx` 中间导航栏（`flex-1`）与右侧搜索框、接续按钮、教材范围按钮宽度不足互相挤压重叠的样式缺陷。将 `<nav>` 改为 `shrink-0` 锁定基础间距，右侧接续按钮限制在超宽屏 `2xl` 展示，教材范围标签宽度自适应截断（`max-w-[130px] md:max-w-[160px]`），各元素添加 `shrink-0`，彻底根除遮挡。
+- **FSRS 调度、跨模式急救队列与核心背诵算法边界修复**：
+  - `src/domain/fsrs/fsrsEngine.ts`：改用本地年月日构造 `Date.UTC` 零点配合 `Math.round` 计算 `elapsedDays`，避免夏令时切换（23 小时日）把跨天误判为同一天；在 `REVIEW`+`EASY` 分支改用 `safeStability`/`safeDifficulty` 并为 `nextInterval`/`retrievability` 增加 `<= 0` 或非有限值保护，消除 `0 * Math.pow(0, -w9)` 导致的 `NaN`；先对 `GOOD` 间隔做 `applyFuzz` 再钳制 `EASY` 间隔下限，避免模糊扰动后出现 `EASY < GOOD` 倒挂。
+  - `src/domain/fsrs/rescueQueue.ts`：在 `buildRescueQueueEntries` 中当 `verse.articleId` 未直接匹配到闪卡时按篇名与作者回退匹配 `ALL_ARTICLES`，避免遗留金句被静默丢弃。
+  - `src/domain/cloze/clozeEngine.ts`：L1 关键词匹配前先对关键词执行 `trim()` 并去重（`Set`），避免含首尾空白的词条在 `startsWith`/`indexOf` 匹配时漏挖空。
+  - `src/domain/cloze/snowballEngine.ts`：将 `bottleneckCount` 计数移至 `primaryId` 缺失与 `seenSegments`/`seenCardIds` 去重 `continue` 之后，并改用 `Math.max(0, updatedCards.length - bottleneckCount)` 计算 `smoothCount`，防止结算统计与真实写卡数错位；调整 `cleanSnowballUnitText` 清洗顺序，先剥离 `【填空正解】`/`【对句】` 再去除残留 `【`/`】`，修复正则失效问题。
+  - `src/domain/scenario/diffEngine.ts`：批改对齐与 `findFailedKeyPointIndices` 统一改用 `Array.from(...)` 码点数组索引，避免四字节字符触发 UTF-16 下标偏移；扫描目标考点在标准答案中的所有出现位置，避免同一词在句中第二次写错时漏报提醒。
+  - `src/sound/audioSynthesizer.ts`：处理 `AudioContext` 处于 `"closed"` 状态时的重建，为 `new AudioCtx()` 增加 `try/catch` 与 `resume().catch(() => {})` 容错，将发声逻辑收敛为 `playTones` 并在 `osc.onended` 中断开 `osc`/`gain` 节点，同时新增 `dispose()` 防止 WebAudio 资源泄漏。
+- **语料数据、闪卡分句与按需加载缓存联动修复**：
+  - `src/data/goldenVersesData.ts` & `src/data/articleRepository.ts`：修正《将进酒》《春江花月夜》《锦瑟》5 条错配的 `articleId`/`moduleId`，并导出 `resolveArticleIdForGoldenVerse` 作为兜底解析。
+  - `src/data/scenarioData.ts` & `src/data/learningContent/part5.ts`：补全《兰亭集序》`gk_lanting_02` 漏字「丝竹」并更新考点关键词；在不改动自动生成文件 `curriculumData.ts` 的前提下，将《苦斋记》（`art_xx_29`）的 `gist` 与首段串讲对齐正文。
+  - `src/data/flashcardGenerator.ts` & `scripts/generate-curriculum-index.mjs`：闪卡切句仅按 `，`/`：` 分句并保留原分隔符（不再被顿号 `、` 拆碎或把冒号覆写为逗号）；合并「青，…」「曰：…」等单字分句以及「嗟乎！」「呜呼！」等短感叹句，避免核心名句首句或短叹词被静默丢弃；多段拆卡的非末段改用非句末分隔符，避免重复拼接 `？`/`！`；同步更新索引脚本的标点集合与卡片计数逻辑并重新生成索引与分册分片。
+  - `src/data/learningContentLoader.ts`、`src/data/flashcardCache.ts`、`src/data/articleRepository.ts`：在 `part1~5` 分片异步加载完成后触发缓存失效回调，避免之前缓存的空释义/空注音闪卡长期滞留；修复 `getCardsForArticles` 仅按长度判断全库缓存命中的问题，改为校验完整 `ARTICLE_INDEX` ID 序列。
+  - `src/data/articleTaxonomy.ts`：在 `filterArticlesMulti` 中补齐按掌握度（`masteryStatus` / `matureCardIds`）筛选逻辑，并索引金句正文以支持在未加载正文分片时按名句检索篇目。
+- **持久化并发竞态、状态同步与部署配置修复**：
+  - `src/storage/db.ts`：`getDB()` 在 `openDB` 拒绝、`blocking` 和 `terminated` 时清理 `dbPromise` 并关闭旧连接，允许失败后恢复重连；`recordReviewLog()` 将 `logs` 与 `daily_records` 读写合并进同一读写事务，消除并发评分时的计数竞态；`mirrorPreferencesToLocalStorage()` 在全量恢复时清理多余的旧 `snowball_stage_*` 键与失效的 `wenyan_last_session`。
+  - `src/storage/studyStore.ts`：仅在加载迁移成功后标记 `hydrated = true`，失败时保留 `false` 以便后续重试；在异步加载/刷新完成后重放期间产生的乐观脏数据并累加 `dailyRecords` 增量，防止初始化覆盖用户刚完成的评分；在迁移完成后停止回退读取旧 `localStorage`。
+  - `src/storage/sessionTracker.ts`、`src/state/StudyAppContext.tsx`、`src/hooks/useFlipCardSession.ts` & `src/App.tsx`：为 `SessionExtra` 增加 `deckId`、`autoStart`、`filterArticleOnly`；用 `lastSyncedHashRef` 替代 `rAF` 标志消除 URL Hash 双向同步竞态；订阅数据库变更同步更新 `selectedScope` 与 `soundEnabled`，移除 React state updater 内的副作用；集中提供 `useRegisterModalOpen` 追踪本地弹窗以统一屏蔽全局快捷键；修复 `useFlipCardSession` 重复应用 `resumeExtra`、冷启动覆写空队列、切卡竞态及未清空 `isFlipped` 的问题；在 `App.tsx` 增加 `ViewErrorBoundary` 兜底块加载异常。
+  - `wrangler.jsonc`、`public/_redirects` & `public/_headers`：改用 `pages_build_output_dir: "./dist"` 对齐 `wrangler pages deploy`，移除会用 `200 text/html` 劫持缺失 JS 分片的 `/* /index.html 200` 重定向，并为 `/index.html` 与 `/sw.js` 增加 `no-cache, no-store, must-revalidate` 响应头。
+- **背诵视图状态清理、移动端适配与交互弹窗细节修复**：
+  - `src/views/FlipCardView.tsx`、`ScenarioView.tsx`、`CramModeView.tsx`、`SnowballView.tsx`、`ClozeView.tsx`、`CatalogView.tsx`、`DashboardView.tsx` & `SettingsView.tsx`：补齐闪卡结算按 `queueMode` 续学与键盘 `repeat`/`SELECT` 隔离；修复高考默写带篇目筛选时错题下标错位、过期闭包及取消筛选横幅缺失；修复抱佛脚「只看易错」标熟时跳过下一条和定时器未清理问题；修复滚雪球切换篇目继承旧 `stageIndex`、翻联未重置显隐及 `hydrated` 依赖缺失；修复刻漏字切篇未重置状态及输入框 `key` 缺失；打通典库/概览页名句检索与直达分册/单篇闪卡学习；修复设置页每日配额输入 `NaN`、异步卸载保护及所有本地弹窗的 `Esc`/遮罩关闭与模态注册。
+  - `src/components/Navbar.tsx`、`AnkiDeckHub.tsx`、`FlipCardBody.tsx`、`CramCardPractice.tsx`、`CramHeaderFilters.tsx`、`CommandPalette.tsx`、`TypingRecallInput.tsx`、`UnderstandingCard.tsx`、`StudyToolbar.tsx`、`ShortcutHelp.tsx`、`ArticlePickerModal.tsx`、`PhoneticsPanel.tsx` & `src/index.css`：补齐移动端抽屉全部 8 个主视图与教材范围入口，修复范围搜索词未清空及外部点击/Esc 收起；修复 `AnkiDeckHub` 折叠激活分册后被重新强制展开；用 CSS Grid 重构闪卡与抱佛脚 3D 翻面容器并移除 `.gpu-accelerate` 的 `backface-visibility: hidden` 与 `.animate-fade-slide-up` 残留 `transform`，消除翻面镜像、边框消失与弹窗层级被截断问题；修复 `CommandPalette` 全局捕获快捷键与 `Tab` 焦点陷阱、`TypingRecallInput` IME 组合输入与命中后失焦提示、`ShortcutHelp` 按 `?` 关闭、`StudyToolbar` 窄屏换行与 `CramHeaderFilters` 徽章对比度及输入框右侧留白。
+
+### 新增
+
+- **标准化多视图实体索引仓库（Phase 3.2）**：新增 `src/data/articleRepository.ts` 及单元测试 `tests/articleRepository.test.ts`。以 `articleId`、段落与句读索引（`segmentId` / `unitIndex` / `paragraphIndex`）为主键，统一只读关联全库 100 篇古诗文正文、`flashcardCache` 闪卡、`CORE_GOLDEN_VERSES` 高频金句（兼容历史 `articleId` 偏移的篇名回退匹配）及 `GAOKAO_SCENARIO_QUESTIONS` 高考情境真题；提供 `getArticleBundle` 与 `getBottleneckFlashcards`，支持将滚雪球标记的卡壳下标直接映射为跨模式急救闪卡队列。
 - **高考情境默写 LCS / 编辑距离精准对齐与考点提示**：新增 `src/domain/scenario/diffEngine.ts`。基于动态规划最小编辑距离（Levenshtein DP）实现逐字对齐，精准区分「字对」「错字」「漏字」「多字」四种状态，彻底解决以往学生在句首或句中漏写或多写一个字导致后续写对的字符全部错位标红的问题；在批改不通过时，自动比对并高亮原题关联的 `keyPoints`（通假字、偏旁易混字等），给出针对性采分提醒。
 - **文言关键词与虚词过滤引擎**：新增 `src/domain/cloze/keywordExtractor.ts`。抽离文言虚词表（24 个纯虚词）与标点判定，自动从难词注音表与注释中提取考点词眼，进行正文存在性校验与长词优先密度控制，并将分词结果按自然段拆分与分状态判定。
 - **轻量应用状态层与 URL Hash 同步**：新增 `src/state/StudyAppContext.tsx`。集中管理视图模式、选篇、教材范围、主题、音效与弹窗状态；支持浏览器前进后退与深度链接（如 `#/snowball/art_bx1_12`、`#/cloze/art_bx1_12`），刷新页面能直接留在当前背诵篇目与模式。

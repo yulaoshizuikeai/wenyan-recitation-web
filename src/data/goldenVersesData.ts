@@ -1,5 +1,3 @@
-import { ALL_ARTICLES } from "./curriculumData";
-
 export interface GoldenVerse {
   id: string;
   articleId: string;
@@ -838,11 +836,11 @@ export const CORE_GOLDEN_VERSES: GoldenVerse[] = [
   },
   {
     id: "gv_jjj_01",
-    articleId: "art_xb1_10",
+    articleId: "art_xb1_recite_03",
     articleTitle: "将进酒",
     author: "李白",
     dynasty: "唐代",
-    moduleId: "MODULE_XB_1",
+    moduleId: "MODULE_XB_1_RECITE",
     moduleName: "选择性必修上册",
     isGaoKao72: true,
     verse: "君不见黄河之水天上来，奔流到海不复回。君不见高堂明镜悲白发，朝如青丝暮成雪。",
@@ -853,11 +851,11 @@ export const CORE_GOLDEN_VERSES: GoldenVerse[] = [
   },
   {
     id: "gv_jjj_02",
-    articleId: "art_xb1_10",
+    articleId: "art_xb1_recite_03",
     articleTitle: "将进酒",
     author: "李白",
     dynasty: "唐代",
-    moduleId: "MODULE_XB_1",
+    moduleId: "MODULE_XB_1_RECITE",
     moduleName: "选择性必修上册",
     isGaoKao72: true,
     verse: "天生我材必有用，千金散尽还复来。烹羊宰牛且为乐，会须一饮三百杯。",
@@ -868,11 +866,11 @@ export const CORE_GOLDEN_VERSES: GoldenVerse[] = [
   },
   {
     id: "gv_cjh_01",
-    articleId: "art_xb1_09",
+    articleId: "art_xb1_recite_02",
     articleTitle: "春江花月夜",
     author: "张若虚",
     dynasty: "唐代",
-    moduleId: "MODULE_XB_1",
+    moduleId: "MODULE_XB_1_RECITE",
     moduleName: "选择性必修上册",
     isGaoKao72: true,
     verse: "江畔何人初见月？江月何年初照人？人生代代无穷已，江月年年望相似。",
@@ -915,11 +913,11 @@ export const CORE_GOLDEN_VERSES: GoldenVerse[] = [
   },
   {
     id: "gv_js_01",
-    articleId: "art_xb2_07",
+    articleId: "art_xb2_recite_03",
     articleTitle: "锦瑟",
     author: "李商隐",
     dynasty: "唐代",
-    moduleId: "MODULE_XB_2",
+    moduleId: "MODULE_XB_2_RECITE",
     moduleName: "选择性必修中册",
     isGaoKao72: true,
     verse: "庄生晓梦迷蝴蝶，望帝春心托杜鹃。沧海月明珠有泪，蓝田日暖玉生烟。",
@@ -930,11 +928,11 @@ export const CORE_GOLDEN_VERSES: GoldenVerse[] = [
   },
   {
     id: "gv_js_02",
-    articleId: "art_xb2_07",
+    articleId: "art_xb2_recite_03",
     articleTitle: "锦瑟",
     author: "李商隐",
     dynasty: "唐代",
-    moduleId: "MODULE_XB_2",
+    moduleId: "MODULE_XB_2_RECITE",
     moduleName: "选择性必修中册",
     isGaoKao72: true,
     verse: "此情可待成追忆？只是当时已惘然。",

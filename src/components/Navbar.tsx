@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Volume2,
   VolumeX,
@@ -23,7 +23,7 @@ import {
 import { getCurricularTiers } from "../data/articleTaxonomy";
 import { AppTheme, toggleTheme } from "../utils/theme";
 import { LastSessionState, NavView, useLastSession } from "../storage/sessionTracker";
-import { useOptionalStudyApp } from "../state/StudyAppContext";
+import { useOptionalStudyApp, useRegisterModalOpen } from "../state/StudyAppContext";
 
 export type { NavView };
 
@@ -91,8 +91,39 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
   const [activeTierId, setActiveTierId] = useState<string>("CORE");
   const [scopeSearchQuery, setScopeSearchQuery] = useState<string>("");
+  const headerRef = useRef<HTMLElement>(null);
+
+  useRegisterModalOpen(isScopeModalOpen);
 
   const curricularTiers = useMemo(() => getCurricularTiers(), []);
+
+  // 打开或关闭教材范围弹层时重置搜索词
+  useEffect(() => {
+    setScopeSearchQuery("");
+  }, [isScopeModalOpen]);
+
+  // 移动端抽屉：Esc 或点击外部区域关闭
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (headerRef.current && !headerRef.current.contains(e.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [isMobileMenuOpen]);
 
   // PC 侧：Esc 关闭教材范围弹层
   useEffect(() => {
@@ -183,6 +214,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <>
       {/* Top Navbar — enters low-profile immersive mode during study */}
       <header
+        ref={headerRef}
         className={`sticky top-0 z-40 backdrop-blur-md border-b transition-all duration-200 ${
           isStudyView
             ? "bg-zinc-50/80 dark:bg-zinc-950/80 border-zinc-200/50 dark:border-zinc-800/50"
@@ -335,12 +367,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile Top Dropdown Drawer for Secondary Items */}
+        {/* Mobile Top Dropdown Drawer for All Primary Views & Scope Selector */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 space-y-1 animate-in fade-in duration-150">
+          <div className="lg:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 space-y-2 max-h-[calc(100vh-3.5rem)] overflow-y-auto animate-in fade-in duration-150">
             {/* Mobile quick resume action if session exists */}
             {lastSession && (
-              <div className="pb-2 mb-2 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="pb-2 border-b border-zinc-100 dark:border-zinc-800">
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -366,54 +398,63 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 px-2 pb-1">
-              专项模式与配置
+            {/* Mobile Scope Selector Trigger (accessible on <640px phones) */}
+            <div>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsScopeModalOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <BookOpen className="w-4 h-4 text-zinc-400 shrink-0" />
+                  <span className="text-zinc-500 dark:text-zinc-400 shrink-0">教材范围：</span>
+                  <span className="truncate font-semibold">{currentScopeLabel}</span>
+                </div>
+                <span className="text-[11px] text-zinc-400 shrink-0 ml-2">切换</span>
+              </button>
             </div>
-            <button
-              onClick={() => handleNavClick("cloze")}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                currentView === "cloze"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
-                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4" />
-                <span>渐进遮挡背诵</span>
-              </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
-                L0-L4
-              </span>
-            </button>
 
-            <button
-              onClick={() => handleNavClick("scenario")}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                currentView === "scenario"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
-                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <HelpCircle className="w-4 h-4" />
-                <span>高考情境默写真题</span>
-              </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-semibold">
-                真题库
-              </span>
-            </button>
-
-            <button
-              onClick={() => handleNavClick("settings")}
-              className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                currentView === "settings"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
-                  : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              }`}
-            >
-              <SettingsIcon className="w-4 h-4" />
-              <span>系统与 FSRS 算法设置</span>
-            </button>
+            <div className="text-[11px] font-medium text-zinc-400 dark:text-zinc-500 px-2 pt-1">
+              全部页面与背诵模式
+            </div>
+            <div className="space-y-1">
+              {[
+                { id: "dashboard" as NavView, label: "研习概览", icon: <BarChart2 className="w-4 h-4" /> },
+                { id: "snowball" as NavView, label: "长卷滚雪球", icon: <Layers className="w-4 h-4" /> },
+                { id: "flipcard" as NavView, label: "牌组闪卡", icon: <Sparkles className="w-4 h-4" /> },
+                { id: "cloze" as NavView, label: "渐进遮挡背诵", icon: <Eye className="w-4 h-4" />, badge: "L0-L4", badgeClass: "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium" },
+                { id: "cram" as NavView, label: "考前抱佛脚", icon: <Flame className="w-4 h-4 text-red-500" /> },
+                { id: "scenario" as NavView, label: "高考情境默写真题", icon: <HelpCircle className="w-4 h-4" />, badge: "真题库", badgeClass: "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-semibold" },
+                { id: "catalog" as NavView, label: "诗文典库", icon: <BookOpen className="w-4 h-4" /> },
+                { id: "settings" as NavView, label: "系统与 FSRS 算法设置", icon: <SettingsIcon className="w-4 h-4" /> },
+              ].map((item) => {
+                const active = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavClick(item.id)}
+                    aria-current={active ? "page" : undefined}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                      active
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 font-semibold"
+                        : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.badgeClass}`}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </header>
@@ -425,6 +466,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={() => setIsScopeModalOpen(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="选择背诵教材范围"
             className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden animate-fade-slide-up"
             onClick={e => e.stopPropagation()}
           >

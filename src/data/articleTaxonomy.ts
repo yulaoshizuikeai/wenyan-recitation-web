@@ -1,4 +1,5 @@
-import { Article, ALL_ARTICLES, MODULES, Module } from "./curriculumData";
+import { ARTICLE_INDEX, ARTICLE_INDEX_MAP, MODULES, type ArticleMeta, type Module } from "./curriculumIndex";
+import { CORE_GOLDEN_VERSES } from "./goldenVersesData";
 
 export type CurriculumCategory = "ALL" | "GAOKAO72" | "BX_ALL" | "XB_ALL" | "XX_ALL" | string;
 
@@ -54,10 +55,10 @@ export interface CurricularTier {
  * Two-tier hierarchical curriculum scope taxonomy for the redesigned picker
  */
 export function getCurricularTiers(): CurricularTier[] {
-  const gaokaoCount = ALL_ARTICLES.filter(a => a.isGaoKao72).length;
-  const bxCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_BX")).length;
-  const xbCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_XB")).length;
-  const xxCount = ALL_ARTICLES.filter(a => a.moduleId.startsWith("MODULE_XX")).length;
+  const gaokaoCount = ARTICLE_INDEX.filter(a => a.isGaoKao72).length;
+  const bxCount = ARTICLE_INDEX.filter(a => a.moduleId.startsWith("MODULE_BX")).length;
+  const xbCount = ARTICLE_INDEX.filter(a => a.moduleId.startsWith("MODULE_XB")).length;
+  const xxCount = ARTICLE_INDEX.filter(a => a.moduleId.startsWith("MODULE_XX")).length;
 
   return [
     {
@@ -66,7 +67,7 @@ export function getCurricularTiers(): CurricularTier[] {
       description: "高考核心课标与全套教材",
       options: [
         { id: "GAOKAO72", name: "高考必背 72 篇", count: gaokaoCount, description: "课标 72 篇中本库已收录的必背篇目", isPopular: true },
-        { id: "ALL", name: "全 11 册教材全部篇目", count: ALL_ARTICLES.length, description: "包含课文及诵读全量 100 篇" },
+        { id: "ALL", name: "全 11 册教材全部篇目", count: ARTICLE_INDEX.length, description: "包含课文及诵读全量 100 篇" },
         { id: "BX_ALL", name: "必修全套 (36篇)", count: bxCount, description: "高一必修上/下册全部课内必学篇目" },
         { id: "XB_ALL", name: "选择性必修全套 (35篇)", count: xbCount, description: "高二/高三选必上/中/下册选修提高篇目" },
         { id: "XX_ALL", name: "古代诗歌散文欣赏 (29篇)", count: xxCount, description: "统编高中选修中国古代诗歌散文欣赏全套" }
@@ -111,7 +112,10 @@ export function getCurricularTiers(): CurricularTier[] {
 /**
  * Filter articles by curriculum scope
  */
-export function filterArticlesByScope(articles: Article[], scopeId: string): Article[] {
+export function filterArticlesByScope<T extends { moduleId: string; isGaoKao72: boolean }>(
+  articles: T[],
+  scopeId: string
+): T[] {
   if (!scopeId || scopeId === "ALL") return articles;
   if (scopeId === "GAOKAO72" || scopeId === "DECK_GAOKAO72") return articles.filter(a => a.isGaoKao72);
   if (scopeId === "BX_ALL") return articles.filter(a => a.moduleId.startsWith("MODULE_BX"));
@@ -126,11 +130,86 @@ export function filterArticlesByScope(articles: Article[], scopeId: string): Art
   return articles.filter(a => a.moduleId === scopeId);
 }
 
+const goldenVerseSearchTextByArticleId: ReadonlyMap<string, string> = (() => {
+  const buckets = new Map<string, string[]>();
+  const titleIndex = new Map<string, ArticleMeta[]>();
+  for (const meta of ARTICLE_INDEX) {
+    const arr = titleIndex.get(meta.title);
+    if (arr) arr.push(meta);
+    else titleIndex.set(meta.title, [meta]);
+  }
+
+  for (const gv of CORE_GOLDEN_VERSES) {
+    let targetId: string | undefined = ARTICLE_INDEX_MAP[gv.articleId] ? gv.articleId : undefined;
+    if (!targetId) {
+      const candidates = titleIndex.get(gv.articleTitle);
+      if (candidates && candidates.length > 0) {
+        targetId = (candidates.find(c => c.author === gv.author) ?? candidates[0]).id;
+      }
+    }
+    if (!targetId) continue;
+
+    const snippet = [gv.verse, gv.highlightPart ?? "", ...gv.scenarioTags]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const list = buckets.get(targetId);
+    if (list) list.push(snippet);
+    else buckets.set(targetId, [snippet]);
+  }
+
+  const joined = new Map<string, string>();
+  for (const [id, parts] of buckets.entries()) {
+    joined.set(id, parts.join("\n"));
+  }
+  return joined;
+})();
+
+/**
+ * Check if any curated golden verse belonging to `articleId` matches the query string.
+ */
+export function matchesArticleGoldenVerse(articleId: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return (goldenVerseSearchTextByArticleId.get(articleId) ?? "").includes(q);
+}
+
+function extractArticleIdFromCardId(cardId: string): string | null {
+  const unitMatch = /^fc_(.+?)_u\d+_c\d+$/.exec(cardId);
+  if (unitMatch) return unitMatch[1];
+  const fallbackMatch = /^fc_(.+?)_0$/.exec(cardId);
+  return fallbackMatch ? fallbackMatch[1] : null;
+}
+
+function countCardsByArticle(cardIds?: ReadonlySet<string>): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!cardIds) return counts;
+  for (const cardId of cardIds) {
+    const artId = extractArticleIdFromCardId(cardId);
+    if (!artId) continue;
+    counts.set(artId, (counts.get(artId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /**
  * Multi-dimensional filter
  */
-export function filterArticlesMulti(
-  articles: Article[],
+export function filterArticlesMulti<
+  T extends {
+    id: string;
+    moduleId: string;
+    title: string;
+    author: string;
+    dynasty: string;
+    genre: string;
+    isGaoKao72: boolean;
+    subtitle?: string | null;
+    fullContent?: string;
+    generatedCardCount?: number;
+  }
+>(
+  articles: T[],
   options: {
     scopeId?: string;
     dynastyEra?: DynastyEra;
@@ -138,8 +217,10 @@ export function filterArticlesMulti(
     searchQuery?: string;
     masteryStatus?: "ALL" | "UNLEARNED" | "LEARNING" | "MASTERED";
     matureCardIds?: Set<string>;
+    learnedCardIds?: Set<string>;
+    searchableTextMap?: ReadonlyMap<string, string>;
   }
-): Article[] {
+): T[] {
   let list = articles;
 
   // 1. Scope filter
@@ -163,7 +244,30 @@ export function filterArticlesMulti(
     }
   }
 
-  // 4. Search query
+  // 4. Mastery status filter
+  if (options.masteryStatus && options.masteryStatus !== "ALL") {
+    const matureCounts = countCardsByArticle(options.matureCardIds);
+    const learnedCounts = options.learnedCardIds
+      ? countCardsByArticle(options.learnedCardIds)
+      : matureCounts;
+
+    list = list.filter(a => {
+      const matureCount = matureCounts.get(a.id) ?? 0;
+      const learnedCount = Math.max(matureCount, learnedCounts.get(a.id) ?? 0);
+      const totalCards = a.generatedCardCount ?? ARTICLE_INDEX_MAP[a.id]?.generatedCardCount ?? 0;
+
+      const status: "UNLEARNED" | "LEARNING" | "MASTERED" =
+        learnedCount === 0
+          ? "UNLEARNED"
+          : totalCards > 0
+            ? (matureCount / totalCards >= 0.8 ? "MASTERED" : "LEARNING")
+            : (matureCount > 0 ? "MASTERED" : "LEARNING");
+
+      return status === options.masteryStatus;
+    });
+  }
+
+  // 5. Search query (matches metadata, fullContent when loaded, optional extra text, and golden verses)
   if (options.searchQuery && options.searchQuery.trim()) {
     const q = options.searchQuery.trim().toLowerCase();
     list = list.filter(
@@ -171,7 +275,10 @@ export function filterArticlesMulti(
         a.title.toLowerCase().includes(q) ||
         a.author.toLowerCase().includes(q) ||
         a.dynasty.toLowerCase().includes(q) ||
-        a.fullContent.includes(q)
+        (typeof a.subtitle === "string" && a.subtitle.toLowerCase().includes(q)) ||
+        (typeof a.fullContent === "string" && a.fullContent.toLowerCase().includes(q)) ||
+        (options.searchableTextMap?.get(a.id)?.toLowerCase().includes(q) ?? false) ||
+        (goldenVerseSearchTextByArticleId.get(a.id)?.includes(q) ?? false)
     );
   }
 

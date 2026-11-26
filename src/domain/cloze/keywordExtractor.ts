@@ -1,5 +1,5 @@
 import { ClozeEngine, ClozeToken, PUNCTUATION_SET as CLOZE_PUNCTUATION_SET } from "./clozeEngine";
-import { getPhonetics } from "../../data/articlePhonetics";
+import { getCachedArticlePhonetics } from "../../data/articlePhonetics";
 
 /**
  * 经典文言文常见纯虚词表。
@@ -124,9 +124,12 @@ export function filterCandidateKeywords(
  * 2. 注释表 (`annotations`) 中的词条；
  * 3. 经过 `filterCandidateKeywords` 过滤虚词、校验正文存在性并按长词优先截取前 20 个。
  */
+const defaultPhoneticsFetcher = (articleId: string): Array<{ word: string }> =>
+  getCachedArticlePhonetics(articleId) ?? [];
+
 export function extractClozeKeywords(
   article: { id: string; annotations: readonly string[] | string[]; fullContent: string },
-  phoneticsFetcher: (articleId: string) => Array<{ word: string }> = getPhonetics,
+  phoneticsFetcher: (articleId: string) => Array<{ word: string }> = defaultPhoneticsFetcher,
   options?: KeywordFilterOptions
 ): string[] {
   const candidates: string[] = [];

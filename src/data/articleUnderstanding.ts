@@ -1,20 +1,34 @@
-import { ArticleUnderstanding } from "./learningContentTypes";
-import { understanding1 } from "./learningContent/part1";
-import { understanding2 } from "./learningContent/part2";
-import { understanding3 } from "./learningContent/part3";
-import { understanding4 } from "./learningContent/part4";
-import { understanding5 } from "./learningContent/part5";
+import type { ArticleUnderstanding } from "./learningContentTypes";
+import {
+  ensureArticleLearningContentLoaded,
+  getAllCachedUnderstandingMap,
+  getCachedUnderstandingEntry,
+  isArticleLearningContentLoaded,
+  loadAllLearningParts
+} from "./learningContentLoader";
 
-/** 全 100 篇理解串讲表，key 为 articleId */
-export const ARTICLE_UNDERSTANDING: Record<string, ArticleUnderstanding> = {
-  ...understanding1,
-  ...understanding2,
-  ...understanding3,
-  ...understanding4,
-  ...understanding5
-};
+/** 按需动态加载指定篇目的理解串讲内容，并缓存到内存 */
+export async function loadArticleUnderstanding(
+  articleId: string
+): Promise<ArticleUnderstanding | undefined> {
+  await ensureArticleLearningContentLoaded(articleId);
+  return getCachedUnderstandingEntry(articleId);
+}
 
-/** 获取指定篇目的理解内容 */
-export function getUnderstanding(articleId: string): ArticleUnderstanding | undefined {
-  return ARTICLE_UNDERSTANDING[articleId];
+/** 同步读取已缓存的理解串讲内容；若所属分片尚未加载则返回 undefined */
+export function getCachedArticleUnderstanding(
+  articleId: string
+): ArticleUnderstanding | undefined {
+  return getCachedUnderstandingEntry(articleId);
+}
+
+/** 判断指定篇目的理解串讲分片是否已加载完成 */
+export function isArticleUnderstandingLoaded(articleId: string): boolean {
+  return isArticleLearningContentLoaded(articleId);
+}
+
+/** 加载全量 100 篇理解串讲数据（仅供校验脚本或全量检查使用） */
+export async function loadAllArticleUnderstanding(): Promise<Record<string, ArticleUnderstanding>> {
+  await loadAllLearningParts();
+  return getAllCachedUnderstandingMap();
 }

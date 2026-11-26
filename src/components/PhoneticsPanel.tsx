@@ -1,8 +1,14 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Volume2 } from "lucide-react";
 import { Article } from "../data/curriculumData";
-import { getPhonetics } from "../data/articlePhonetics";
+import {
+  getCachedArticlePhonetics,
+  isArticlePhoneticsLoaded,
+  loadArticlePhonetics
+} from "../data/articlePhonetics";
+import type { PhoneticsEntry } from "../data/learningContentTypes";
+import { useRegisterModalOpen } from "../state/StudyAppContext";
 
 interface PhoneticsPanelProps {
   article: Article;
@@ -11,7 +17,42 @@ interface PhoneticsPanelProps {
 
 /** 难词注音面板：右侧滑出抽屉，列出当前篇目的难读字词与释义 */
 export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose }) => {
-  const entries = getPhonetics(article.id);
+  useRegisterModalOpen(true);
+
+  const [entries, setEntries] = useState<PhoneticsEntry[]>(
+    () => getCachedArticlePhonetics(article.id) ?? []
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(
+    () => !isArticlePhoneticsLoaded(article.id)
+  );
+
+  useEffect(() => {
+    if (isArticlePhoneticsLoaded(article.id)) {
+      setEntries(getCachedArticlePhonetics(article.id) ?? []);
+      setIsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    loadArticlePhonetics(article.id)
+      .then((loaded) => {
+        if (!cancelled) {
+          setEntries(loaded);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntries([]);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [article.id]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -27,6 +68,9 @@ export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="难词注音"
         className="w-full max-w-md h-full bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-drawer-in"
         onClick={e => e.stopPropagation()}
       >
@@ -40,7 +84,7 @@ export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose
               </h2>
             </div>
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-              《{article.title}》· {article.author} · 共 {entries.length} 条
+              《{article.title}》· {article.author} · {isLoading ? "加载中..." : `共 ${entries.length} 条`}
             </p>
           </div>
           <button
@@ -54,7 +98,11 @@ export const PhoneticsPanel: React.FC<PhoneticsPanelProps> = ({ article, onClose
 
         {/* 列表 */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {entries.length === 0 ? (
+          {isLoading ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 py-8 text-center">
+              正在加载注音数据...
+            </p>
+          ) : entries.length === 0 ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400 py-8 text-center">
               本篇暂无难词注音数据
             </p>

@@ -9,6 +9,7 @@ export interface SnowballUnit {
   cardIds: string[];
   segmentId?: string;
   primaryCardId?: string | null;
+  paragraphIndex?: number;
 }
 
 export interface SnowballStage {
@@ -17,6 +18,22 @@ export interface SnowballStage {
   newlyAddedUnit: SnowballUnit;
   chainUnits: SnowballUnit[];
   progressRatio: number;
+}
+
+export interface SnowballBridgeCard {
+  id: string;
+  fromParagraphIndex: number;
+  toParagraphIndex: number;
+  promptSentence: string;
+  targetSentence: string;
+  targetUnitIndex: number;
+  targetCardIds: string[];
+  targetPrimaryCardId: string | null;
+  targetSegmentId?: string;
+}
+
+export interface BuildStagesOptions {
+  paragraphIndex?: number;
 }
 
 export const DEFAULT_MAX_SNOWBALL_IMMEDIATE_LEARNING = 5;
@@ -190,16 +207,16 @@ export function buildSnowballCompletionPlan(
   let immediateLearningCount = 0;
 
   for (const stg of stages) {
-    const isBottleneck = bottleneckSet.has(stg.stageIndex);
-    if (isBottleneck) {
-      bottleneckCount += 1;
-    }
-
     const primaryId = resolvePrimaryCardId(stg);
     if (!primaryId) continue;
 
     const segKey = stg.newlyAddedUnit.segmentId || primaryId;
     if (seenSegments.has(segKey) || seenCardIds.has(primaryId)) continue;
+
+    const isBottleneck = bottleneckSet.has(stg.newlyAddedUnit.index);
+    if (isBottleneck) {
+      bottleneckCount += 1;
+    }
 
     seenSegments.add(segKey);
     seenCardIds.add(primaryId);
@@ -272,7 +289,7 @@ export function buildSnowballCompletionPlan(
     totalNextDays += nextIntervalDays;
   }
 
-  const smoothCount = Math.max(0, stages.length - bottleneckCount);
+  const smoothCount = Math.max(0, updatedCards.length - bottleneckCount);
   const avgNextInterval = updatedCards.length > 0 ? totalNextDays / updatedCards.length : 0;
 
   return {
@@ -287,14 +304,31 @@ export function buildSnowballCompletionPlan(
   };
 }
 
-export class SnowballChainingEngine {
-  static buildStages(article: Article): SnowballStage[] {
-    const flashcards = generateFlashcardsForArticle(article);
-    let units: SnowballUnit[] = [];
+function cleanSnowballUnitText(rawText: string): string {
+  return rawText
+    .replace(/【填空正解】/g, "")
+    .replace(/【对句】/g, "")
+    .replace(/⟦ ________ ⟧/g, "")
+    .replace(/【/g, "")
+    .replace(/】/g, "")
+    .trim();
+}
 
-    if (flashcards.length > 0) {
-      const unitMap = new Map<number, typeof flashcards>();
-      for (const card of flashcards) {
+function extractSnowballUnits(
+  article: Article,
+  paragraphIndex?: number
+): SnowballUnit[] {
+  const flashcards = generateFlashcardsForArticle(article);
+
+  if (flashcards.length > 0) {
+    const filteredCards =
+      paragraphIndex !== undefined
+        ? flashcards.filter(card => (card.paragraphIndex ?? 0) === paragraphIndex)
+        : flashcards;
+
+    if (filteredCards.length > 0) {
+      const unitMap = new Map<number, Flashcard[]>();
+      for (const card of filteredCards) {
         if (!unitMap.has(card.unitIndex)) {
           unitMap.set(card.unitIndex, []);
         }
@@ -302,49 +336,156 @@ export class SnowballChainingEngine {
       }
 
       const sortedEntries = Array.from(unitMap.entries()).sort((a, b) => a[0] - b[0]);
-      units = sortedEntries.map(([idx, cardsForUnit]) => {
+      return sortedEntries.map(([idx, cardsForUnit]) => {
         const firstCard = cardsForUnit[0];
         const primaryCard = selectPrimaryCardForSegment(cardsForUnit);
         const rawText = firstCard.fullVerseContext || firstCard.backAnswer;
-        const cleanText = rawText
-          .replace(/【/g, "")
-          .replace(/】/g, "")
-          .replace(/⟦ ________ ⟧/g, "")
-          .replace(/【填空正解】/g, "")
-          .replace(/【对句】/g, "")
-          .trim();
         return {
           index: idx,
-          text: cleanText,
+          text: cleanSnowballUnitText(rawText),
           cardIds: cardsForUnit.map(c => c.id),
           segmentId: firstCard.segmentId,
-          primaryCardId: primaryCard?.id ?? null
+          primaryCardId: primaryCard?.id ?? null,
+          paragraphIndex: firstCard.paragraphIndex ?? paragraphIndex
         };
       });
+    }
+  }
+
+  if (paragraphIndex !== undefined) {
+    if (
+      paragraphIndex < 0 ||
+      paragraphIndex >= article.paragraphs.length ||
+      !article.paragraphs[paragraphIndex]?.trim()
+    ) {
+      return [];
+    }
+    return [
+      {
+        index: paragraphIndex,
+        text: article.paragraphs[paragraphIndex],
+        cardIds: [],
+        paragraphIndex
+      }
+    ];
+  }
+
+  return article.paragraphs.map((p, idx) => ({
+    index: idx,
+    text: p,
+    cardIds: [],
+    paragraphIndex: idx
+  }));
+}
+
+function buildStagesFromUnits(units: SnowballUnit[]): SnowballStage[] {
+  if (units.length === 0) return [];
+
+  const stages: SnowballStage[] = [];
+  const total = units.length;
+
+  for (let i = 0; i < total; i++) {
+    const chain = units.slice(0, i + 1);
+    stages.push({
+      stageIndex: i,
+      totalStages: total,
+      newlyAddedUnit: units[i],
+      chainUnits: chain,
+      progressRatio: (i + 1) / total
+    });
+  }
+
+  return stages;
+}
+
+/**
+ * Build snowball stages scoped to a single natural paragraph of an article.
+ */
+export function buildParagraphStages(
+  article: Article,
+  paragraphIndex: number
+): SnowballStage[] {
+  if (
+    !article.paragraphs ||
+    paragraphIndex < 0 ||
+    paragraphIndex >= article.paragraphs.length
+  ) {
+    return [];
+  }
+  const units = extractSnowballUnits(article, paragraphIndex);
+  return buildStagesFromUnits(units);
+}
+
+/**
+ * Build inter-paragraph transition cards ("上段末句 → 默写下段首句")
+ * for articles with at least 2 paragraphs.
+ */
+export function buildBridgeCards(article: Article): SnowballBridgeCard[] {
+  if (!article.paragraphs || article.paragraphs.length < 2) {
+    return [];
+  }
+
+  const allUnits = extractSnowballUnits(article);
+  if (allUnits.length === 0) {
+    return [];
+  }
+
+  const unitsByPara = new Map<number, SnowballUnit[]>();
+  for (const unit of allUnits) {
+    const pIdx = unit.paragraphIndex ?? 0;
+    const bucket = unitsByPara.get(pIdx);
+    if (bucket) {
+      bucket.push(unit);
     } else {
-      units = article.paragraphs.map((p, idx) => ({
-        index: idx,
-        text: p,
-        cardIds: []
-      }));
+      unitsByPara.set(pIdx, [unit]);
     }
+  }
 
-    if (units.length === 0) return [];
-
-    const stages: SnowballStage[] = [];
-    const total = units.length;
-
-    for (let i = 0; i < total; i++) {
-      const chain = units.slice(0, i + 1);
-      stages.push({
-        stageIndex: i,
-        totalStages: total,
-        newlyAddedUnit: units[i],
-        chainUnits: chain,
-        progressRatio: (i + 1) / total
-      });
+  const cards: SnowballBridgeCard[] = [];
+  for (let p = 0; p < article.paragraphs.length - 1; p++) {
+    const prevUnits = unitsByPara.get(p);
+    const nextUnits = unitsByPara.get(p + 1);
+    if (!prevUnits || prevUnits.length === 0 || !nextUnits || nextUnits.length === 0) {
+      continue;
     }
+    const lastOfPrev = prevUnits[prevUnits.length - 1];
+    const firstOfNext = nextUnits[0];
+    cards.push({
+      id: `bridge_${article.id}_p${p}_to_p${p + 1}`,
+      fromParagraphIndex: p,
+      toParagraphIndex: p + 1,
+      promptSentence: lastOfPrev.text,
+      targetSentence: firstOfNext.text,
+      targetUnitIndex: firstOfNext.index,
+      targetCardIds: firstOfNext.cardIds,
+      targetPrimaryCardId: firstOfNext.primaryCardId ?? null,
+      targetSegmentId: firstOfNext.segmentId
+    });
+  }
 
-    return stages;
+  return cards;
+}
+
+export class SnowballChainingEngine {
+  static buildStages(
+    article: Article,
+    options?: BuildStagesOptions
+  ): SnowballStage[] {
+    if (options?.paragraphIndex !== undefined) {
+      return buildParagraphStages(article, options.paragraphIndex);
+    }
+    const units = extractSnowballUnits(article);
+    return buildStagesFromUnits(units);
+  }
+
+  static buildParagraphStages(
+    article: Article,
+    paragraphIndex: number
+  ): SnowballStage[] {
+    return buildParagraphStages(article, paragraphIndex);
+  }
+
+  static buildBridgeCards(article: Article): SnowballBridgeCard[] {
+    return buildBridgeCards(article);
   }
 }

@@ -1,5 +1,4 @@
-import { ALL_ARTICLES, Article, MODULES, Module } from "./curriculumData";
-import { flashcardCache } from "./flashcardCache";
+import { ARTICLE_INDEX, ARTICLE_INDEX_MAP, type ArticleMeta } from "./curriculumIndex";
 import { CardFsrsState, CardState } from "../domain/fsrs/fsrsTypes";
 
 export interface VolumeDeck {
@@ -111,72 +110,84 @@ export interface DeckCardStats {
 }
 
 /**
- * Get articles for a specific volume deck id
+ * Get article metadata for a specific volume deck id
  */
-export function getArticlesForDeck(deckId: string): Article[] {
+export function getArticlesForDeck(deckId: string): ArticleMeta[] {
   if (deckId === "DECK_ALL") {
-    return ALL_ARTICLES;
+    return ARTICLE_INDEX;
   }
   if (deckId === "DECK_GAOKAO72") {
-    return ALL_ARTICLES.filter(a => a.isGaoKao72);
+    return ARTICLE_INDEX.filter(a => a.isGaoKao72);
   }
   const vol = VOLUME_DECKS.find(v => v.id === deckId);
   if (vol) {
-    return ALL_ARTICLES.filter(a => vol.moduleIds.includes(a.moduleId));
+    return ARTICLE_INDEX.filter(a => vol.moduleIds.includes(a.moduleId));
   }
   // If deckId is a single article id
-  const single = ALL_ARTICLES.find(a => a.id === deckId);
+  const single = ARTICLE_INDEX_MAP[deckId];
   if (single) {
     return [single];
   }
-  return ALL_ARTICLES;
+  return ARTICLE_INDEX;
 }
 
 /**
  * Find the corresponding volume for an article
  */
 export function getVolumeForArticle(articleId: string): VolumeDeck | undefined {
-  const art = ALL_ARTICLES.find(a => a.id === articleId);
+  const art = ARTICLE_INDEX_MAP[articleId];
   if (!art) return undefined;
   return VOLUME_DECKS.find(v => v.moduleIds.includes(art.moduleId));
 }
 
+function extractArticleIdFromCardId(cardId: string): string | null {
+  const unitMatch = /^fc_(.+?)_u\d+_c\d+$/.exec(cardId);
+  if (unitMatch) return unitMatch[1];
+  const fallbackMatch = /^fc_(.+?)_0$/.exec(cardId);
+  return fallbackMatch ? fallbackMatch[1] : null;
+}
+
 /**
- * Compute Anki-accurate card statistics for an array of articles
+ * Compute Anki-accurate card statistics from lightweight ArticleMeta[] and cardStatesMap
+ * without loading full article bodies or running flashcard regex generation on initial load.
  */
 export function computeDeckStats(
   deckId: string,
   deckName: string,
-  articles: Article[],
+  articles: ArticleMeta[],
   cardStatesMap: Map<string, CardFsrsState>,
   now = Date.now()
 ): DeckCardStats {
+  const articleIdSet = new Set(articles.map(a => a.id));
   let totalCards = 0;
-  let newCount = 0;
+  for (const article of articles) {
+    totalCards += article.generatedCardCount;
+  }
+
+  let nonNewCount = 0;
   let learningCount = 0;
   let dueCount = 0;
   let matureCount = 0;
 
-  for (const article of articles) {
-    const cards = flashcardCache.getCardsForArticle(article);
-    totalCards += cards.length;
+  for (const state of cardStatesMap.values()) {
+    const artId = extractArticleIdFromCardId(state.cardId);
+    if (!artId || !articleIdSet.has(artId)) continue;
+    if (state.state === CardState.NEW) continue;
 
-    for (const card of cards) {
-      const state = cardStatesMap.get(card.id);
-      if (!state || state.state === CardState.NEW) {
-        newCount++;
-      } else if (state.state === CardState.LEARNING || state.state === CardState.RELEARNING) {
-        learningCount++;
-      } else if (state.state === CardState.REVIEW) {
-        if (state.dueTime <= now) {
-          dueCount++;
-        }
-        if (state.stability >= 21) {
-          matureCount++;
-        }
+    nonNewCount++;
+    if (state.state === CardState.LEARNING || state.state === CardState.RELEARNING) {
+      learningCount++;
+    } else if (state.state === CardState.REVIEW) {
+      if (state.dueTime <= now) {
+        dueCount++;
+      }
+      if (state.stability >= 21) {
+        matureCount++;
       }
     }
   }
+
+  const newCount = Math.max(0, totalCards - nonNewCount);
 
   return {
     id: deckId,

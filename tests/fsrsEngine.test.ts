@@ -163,10 +163,81 @@ describe("FSRSEngine", () => {
   });
 
   describe("Interval Boundaries & Fuzz", () => {
-    it("enforces minimum interval of 1 day even when stability is extremely low", () => {
+    it("enforces minimum interval of 1 day even when stability is extremely low or non-finite", () => {
       expect(engine.nextInterval(0)).toBe(1);
       expect(engine.nextInterval(-5)).toBe(1);
+      expect(engine.nextInterval(NaN)).toBe(1);
+      expect(engine.nextInterval(Infinity)).toBe(1);
+      expect(engine.nextInterval(-Infinity)).toBe(1);
       expect(engine.nextInterval(0.0001)).toBeGreaterThanOrEqual(1);
+    });
+
+    it("handles corrupted REVIEW card stability/difficulty under Rating.EASY without NaN", () => {
+      const corruptedCard = {
+        ...engine.createInitialCard("c_corrupted"),
+        state: CardState.REVIEW,
+        stability: 0,
+        difficulty: NaN,
+        reps: 2,
+        lastReviewTime: mockNow - 2 * 86_400_000,
+      };
+      const res = engine.evaluateReview(corruptedCard, Rating.EASY, mockNow);
+      expect(Number.isFinite(res.updatedCard.stability)).toBe(true);
+      expect(res.updatedCard.stability).toBeGreaterThan(0);
+      expect(Number.isFinite(res.updatedCard.difficulty)).toBe(true);
+      expect(Number.isFinite(res.updatedCard.scheduledDays)).toBe(true);
+      expect(res.updatedCard.scheduledDays).toBeGreaterThanOrEqual(1);
+    });
+
+    it("computes calendar elapsedDays via UTC midnights across a 23-hour day boundary", () => {
+      const initial = engine.createInitialCard("c_dst");
+      const reviewCard = engine.evaluateReview(initial, Rating.EASY, mockNow).updatedCard;
+      const day1Late = new Date(2026, 2, 7, 23, 30, 0).getTime();
+      const day2Earlier = new Date(2026, 2, 8, 22, 30, 0).getTime();
+      reviewCard.lastReviewTime = day1Late;
+
+      const utcSpy = vi.spyOn(Date, "UTC");
+      const res = engine.evaluateReview(reviewCard, Rating.GOOD, day2Earlier);
+      expect(utcSpy).toHaveBeenCalled();
+      expect(res.updatedCard.elapsedDays).toBe(1);
+      utcSpy.mockRestore();
+    });
+
+    it("keeps REVIEW + EASY post-fuzz interval strictly greater than post-fuzz GOOD interval", () => {
+      const reviewCard = {
+        ...engine.createInitialCard("c_fuzz_order"),
+        state: CardState.REVIEW,
+        stability: 10,
+        difficulty: 5,
+        reps: 3,
+        lastReviewTime: mockNow - 10 * 86_400_000,
+      };
+
+      const nextIntervalSpy = vi.spyOn(engine, "nextInterval")
+        .mockReturnValueOnce(30) // easy newStability -> easyIvl = 30
+        .mockReturnValueOnce(29) // goodStability -> goodIvl = 29
+        .mockReturnValueOnce(30); // easyIvl = 30
+      const fuzzSpy = vi.spyOn(engine, "applyFuzz").mockImplementation((ivl) => {
+        if (ivl === 29) return 30; // fuzzedGoodIvl = 30
+        if (ivl === 30) return 29; // fuzzedEasyIvl = 29 (< fuzzedGoodIvl!)
+        return ivl;
+      });
+
+      const res = engine.evaluateReview(reviewCard, Rating.EASY, mockNow);
+      expect(res.updatedCard.scheduledDays).toBeGreaterThanOrEqual(31);
+
+      nextIntervalSpy.mockRestore();
+      fuzzSpy.mockRestore();
+
+      // Verify invariant across many card IDs with real engine calls
+      for (let i = 0; i < 50; i++) {
+        const card = { ...reviewCard, cardId: `card_fuzz_${i}`, reps: i };
+        const goodRes = engine.evaluateReview(card, Rating.GOOD, mockNow);
+        const easyRes = engine.evaluateReview(card, Rating.EASY, mockNow);
+        expect(easyRes.updatedCard.scheduledDays).toBeGreaterThanOrEqual(
+          Math.min(goodRes.updatedCard.scheduledDays + 1, engine.maximumInterval)
+        );
+      }
     });
 
     it("respects maximumInterval boundary cap (36500 days)", () => {

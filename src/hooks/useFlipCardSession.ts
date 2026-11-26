@@ -5,8 +5,15 @@
  * of missed cards, and session-level stats for FlipCardView.
  * The view layer only needs to call the returned handlers and read the returned state.
  */
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { ALL_ARTICLES, Article } from "../data/curriculumData";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { ARTICLE_INDEX, ARTICLE_INDEX_MAP, type ArticleMeta } from "../data/curriculumIndex";
+import type { Article } from "../data/curriculumTypes";
+import {
+  loadAllArticles,
+  loadArticleById,
+  loadArticlesByIds,
+  loadArticlesForScope,
+} from "../data/curriculumLoader";
 import { Flashcard } from "../data/flashcardGenerator";
 import { flashcardCache } from "../data/flashcardCache";
 import { filterArticlesByScope } from "../data/articleTaxonomy";
@@ -26,19 +33,18 @@ import {
   DailySchedulePlan,
   shuffleArray,
 } from "../domain/fsrs/ankiScheduler";
+import { buildRescueFlashcardQueue } from "../domain/fsrs/rescueQueue";
 import { getLocalDateString } from "../utils/date";
 import {
   getCardState,
-  saveCardState,
   recordReviewLog,
-  getAllCardStates,
-  getDailyRecords,
 } from "../storage/db";
+import { useStudyStore, studyStore, hydrateStudyStore } from "../storage/studyStore";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 
-export type QueueMode = "due" | "new" | "article" | "random" | "deck";
+export type QueueMode = "due" | "new" | "article" | "random" | "deck" | "rescue";
 export type ViewMode = "deck_hub" | "study";
 
 export function sortCardsSequentially(cards: Flashcard[]): Flashcard[] {
@@ -90,12 +96,13 @@ export interface FlipCardSessionState {
   // Cards counts for display
   newCardsAll: Flashcard[];
   dueCardsAll: Flashcard[];
+  rescueCards: Flashcard[];
   // DB data
   cardStatesMap: Map<string, CardFsrsState>;
   dailyPlan: DailySchedulePlan;
   isLoadingStates: boolean;
   // Filtered article list (for article-mode selector)
-  targetArticles: Article[];
+  targetArticles: ArticleMeta[];
   // L2.2 / L2.3 modes & hints
   sequentialMode: boolean;
   toggleSequentialMode: () => void;
@@ -141,32 +148,67 @@ export function useFlipCardSession({
 
   // ── View Mode ─────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0) {
+    if (
+      resumeExtra?.autoStart ||
+      resumeExtra?.deckId ||
+      (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0) ||
+      resumeExtra?.queueMode === "rescue"
+    ) {
       return "study";
     }
     return "deck_hub";
   });
 
   // ── Active Deck / Article Context ─────────────────────────────────────────
-  const [activeDeckId, setActiveDeckId] = useState<string>("DECK_ALL");
-  const [activeArticleId, setActiveArticleId] = useState<string | undefined>(initialArticleId);
+  const [activeDeckId, setActiveDeckId] = useState<string>(() => {
+    if (resumeExtra?.queueMode === "rescue") return "DECK_RESCUE";
+    if (resumeExtra?.deckId) return resumeExtra.deckId;
+    return "DECK_ALL";
+  });
+  const [activeArticleId, setActiveArticleId] = useState<string | undefined>(() => {
+    if (resumeExtra?.queueMode === "rescue" || resumeExtra?.deckId) return undefined;
+    return initialArticleId;
+  });
 
   // ── Article List filtered by scope ────────────────────────────────────────
-  const targetArticles = useMemo(
-    () => filterArticlesByScope(ALL_ARTICLES, selectedScope),
+  const targetArticles: ArticleMeta[] = useMemo(
+    () => filterArticlesByScope(ARTICLE_INDEX, selectedScope),
     [selectedScope]
   );
 
+  const [loadedScopeArticles, setLoadedScopeArticles] = useState<Article[]>([]);
+  const [loadedAllArticles, setLoadedAllArticles] = useState<Article[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadArticlesForScope(selectedScope).then((arts) => {
+      if (!cancelled) setLoadedScopeArticles(arts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedScope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAllArticles().then((arts) => {
+      if (!cancelled) setLoadedAllArticles(arts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const allCards = useMemo(
-    () => flashcardCache.getCardsForArticles(targetArticles),
-    [targetArticles]
+    () => flashcardCache.getCardsForArticles(loadedScopeArticles),
+    [loadedScopeArticles]
   );
 
   // ── Queue Mode ────────────────────────────────────────────────────────────
   const [queueMode, setQueueMode] = useState<QueueMode>(() => {
     if (
       resumeExtra?.queueMode &&
-      ["due", "new", "article", "random", "deck"].includes(resumeExtra.queueMode)
+      ["due", "new", "article", "random", "deck", "rescue"].includes(resumeExtra.queueMode)
     ) {
       return resumeExtra.queueMode as QueueMode;
     }
@@ -185,52 +227,52 @@ export function useFlipCardSession({
     }
   }, [initialArticleId]);
 
-  // ── Card States from IndexedDB ─────────────────────────────────────────────
-  const [cardStatesMap, setCardStatesMap] = useState<Map<string, CardFsrsState>>(new Map());
-  const [dailyRecords, setDailyRecords] = useState<
-    { date: string; count: number; newLearned: number }[]
-  >([]);
-  const [isLoadingStates, setIsLoadingStates] = useState(true);
+  // ── Card States from StudyStore (0ms reactive cache) ───────────────────────
+  const {
+    cards: cardStatesMap,
+    dailyRecords: dailyRecordsMap,
+    bottlenecks: bottlenecksMap,
+    settings: storeSettings,
+    hydrated,
+  } = useStudyStore();
+  const isLoadingStates = !hydrated;
+
+  const rescueCards = useMemo(() => {
+    return buildRescueFlashcardQueue({
+      bottlenecks: bottlenecksMap,
+      cramRatings: studyStore.getCramRatings(),
+      scenarioWrongItems: studyStore.getScenarioWrongItems(),
+      cardStatesMap,
+    });
+  }, [bottlenecksMap, storeSettings, cardStatesMap]);
 
   const refreshCardStates = useCallback(async () => {
-    try {
-      const [states, records] = await Promise.all([getAllCardStates(), getDailyRecords()]);
-      const map = new Map<string, CardFsrsState>();
-      states.forEach((s) => map.set(s.cardId, s));
-      setCardStatesMap(map);
-      setDailyRecords(records);
-    } finally {
-      setIsLoadingStates(false);
-    }
+    await hydrateStudyStore();
   }, []);
 
-  useEffect(() => {
-    refreshCardStates();
-  }, [refreshCardStates]);
-
-  const now = Date.now();
+  const now = useMemo(() => Date.now(), [cardStatesMap, dailyRecordsMap, schedulerSettings]);
   const todayStr = getLocalDateString();
   const todayRecord = useMemo(() => {
     return (
-      dailyRecords.find((r) => r.date === todayStr) || {
+      dailyRecordsMap.get(todayStr) || {
         date: todayStr,
         count: 0,
         newLearned: 0,
       }
     );
-  }, [dailyRecords, todayStr]);
+  }, [dailyRecordsMap, todayStr]);
 
   // ── Daily Plan ────────────────────────────────────────────────────────────
   const dailyPlan = useMemo(() => {
     return ankiScheduler.buildDailyPlan(
-      ALL_ARTICLES,
+      loadedAllArticles,
       cardStatesMap,
       schedulerSettings,
       todayRecord.newLearned,
       todayRecord.count,
       now
     );
-  }, [cardStatesMap, schedulerSettings, todayRecord, now]);
+  }, [loadedAllArticles, cardStatesMap, schedulerSettings, todayRecord, now]);
 
   // ── Due / New card lists ───────────────────────────────────────────────────
   const dueCardsAll = useMemo(() => {
@@ -260,15 +302,50 @@ export function useFlipCardSession({
 
   // ── Session Queue ─────────────────────────────────────────────────────────
   const [sessionCards, setSessionCards] = useState<Flashcard[]>([]);
+  const queueRequestIdRef = useRef(0);
+  const appliedResumeExtraRef = useRef<SessionExtra | undefined>(undefined);
+  const hasInitializedColdStartRef = useRef(false);
+  const lastCardIdRef = useRef<string | undefined>(undefined);
+  const initialArticleIdRef = useRef(initialArticleId);
+  initialArticleIdRef.current = initialArticleId;
+  const selectedArticleIdRef = useRef(selectedArticleId);
+  selectedArticleIdRef.current = selectedArticleId;
+  const activeDeckIdRef = useRef(activeDeckId);
+  activeDeckIdRef.current = activeDeckId;
+  const activeArticleIdRef = useRef(activeArticleId);
+  activeArticleIdRef.current = activeArticleId;
+  const sequentialModeRef = useRef(sequentialMode);
+  sequentialModeRef.current = sequentialMode;
 
   const initSessionCards = useCallback(
-    (deckId: string, articleId?: string) => {
+    async (deckId: string, articleId?: string, restoreIndex?: number | null) => {
+      const reqId = ++queueRequestIdRef.current;
+
+      if (deckId === "DECK_RESCUE") {
+        const rescueQueue = sequentialMode ? sortCardsSequentially(rescueCards) : [...rescueCards];
+        const targetIdx =
+          restoreIndex !== undefined && restoreIndex !== null && rescueQueue.length > 0
+            ? Math.min(Math.max(0, restoreIndex), rescueQueue.length - 1)
+            : 0;
+        setSessionCards(rescueQueue);
+        setCurrentIndex(targetIdx);
+        setHasRestoredNotice(targetIdx > 0);
+        setIsFlipped(false);
+        setShowPrecedingHint(false);
+        setCompletedCount(0);
+        setSessionFinished(false);
+        return;
+      }
+
       let targetArtList: Article[] = [];
       if (articleId) {
-        const a = ALL_ARTICLES.find((x) => x.id === articleId);
+        const a = await loadArticleById(articleId);
+        if (queueRequestIdRef.current !== reqId) return;
         targetArtList = a ? [a] : [];
       } else {
-        targetArtList = getArticlesForDeck(deckId);
+        const metas = getArticlesForDeck(deckId);
+        targetArtList = await loadArticlesByIds(metas.map((m) => m.id));
+        if (queueRequestIdRef.current !== reqId) return;
       }
 
       const plan = ankiScheduler.buildDailyPlan(
@@ -290,26 +367,38 @@ export function useFlipCardSession({
         queue = sortCardsSequentially(queue);
       }
 
+      const targetIdx =
+        restoreIndex !== undefined && restoreIndex !== null && queue.length > 0
+          ? Math.min(Math.max(0, restoreIndex), queue.length - 1)
+          : 0;
+
       setSessionCards(queue);
-      setCurrentIndex(0);
+      setCurrentIndex(targetIdx);
+      setHasRestoredNotice(targetIdx > 0);
       setIsFlipped(false);
       setShowPrecedingHint(false);
       setCompletedCount(0);
       setSessionFinished(false);
     },
-    [cardStatesMap, schedulerSettings, todayRecord, sequentialMode]
+    [cardStatesMap, schedulerSettings, todayRecord, sequentialMode, rescueCards]
   );
 
+  const initSessionCardsRef = useRef(initSessionCards);
+  initSessionCardsRef.current = initSessionCards;
+
   const handleStartStudyDeck = (deckId: string, articleId?: string) => {
+    hasInitializedColdStartRef.current = true;
     setActiveDeckId(deckId);
     setActiveArticleId(articleId);
-    if (articleId) {
+    if (deckId === "DECK_RESCUE") {
+      setQueueMode("rescue");
+    } else if (articleId) {
       setSelectedArticleId(articleId);
       setQueueMode("article");
     } else {
       setQueueMode("deck");
     }
-    initSessionCards(deckId, articleId);
+    void initSessionCards(deckId, articleId);
     setViewMode("study");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -326,30 +415,88 @@ export function useFlipCardSession({
     return resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0;
   });
 
-  // Restore session extra if passed
+  // Restore session extra ONCE per new resumeExtra object (after hydration)
   useEffect(() => {
-    if (
-      resumeExtra?.queueMode &&
-      ["due", "new", "article", "random", "deck"].includes(resumeExtra.queueMode)
-    ) {
-      setQueueMode(resumeExtra.queueMode as QueueMode);
+    if (!hydrated) return;
+    if (!resumeExtra || appliedResumeExtraRef.current === resumeExtra) return;
+    appliedResumeExtraRef.current = resumeExtra;
+
+    const rawMode = resumeExtra.queueMode;
+    const validMode: QueueMode | undefined =
+      rawMode && ["due", "new", "article", "random", "deck", "rescue"].includes(rawMode)
+        ? (rawMode as QueueMode)
+        : undefined;
+
+    if (validMode) {
+      setQueueMode(validMode);
     }
-    if (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex >= 0) {
+
+    const restoreIdx =
+      resumeExtra.cardIndex !== undefined && resumeExtra.cardIndex >= 0
+        ? resumeExtra.cardIndex
+        : null;
+
+    if (validMode === "rescue") {
+      setActiveDeckId("DECK_RESCUE");
+      setActiveArticleId(undefined);
+      setViewMode("study");
+      hasInitializedColdStartRef.current = true;
+      void initSessionCardsRef.current("DECK_RESCUE", undefined, restoreIdx);
+      return;
+    }
+
+    if (
+      resumeExtra.autoStart ||
+      resumeExtra.deckId ||
+      (resumeExtra.cardIndex !== undefined && resumeExtra.cardIndex > 0)
+    ) {
+      const nextArtId =
+        validMode === "article"
+          ? initialArticleIdRef.current || selectedArticleIdRef.current
+          : resumeExtra.deckId
+            ? undefined
+            : activeArticleIdRef.current;
+      const nextDeckId =
+        resumeExtra.deckId ||
+        (validMode === "article" ? nextArtId || "DECK_ALL" : "DECK_ALL");
+
+      setActiveDeckId(nextDeckId);
+      if (nextArtId) {
+        setActiveArticleId(nextArtId);
+        setSelectedArticleId(nextArtId);
+      } else if (resumeExtra.deckId) {
+        setActiveArticleId(undefined);
+      }
+      setViewMode("study");
+      hasInitializedColdStartRef.current = true;
+      void initSessionCardsRef.current(nextDeckId, nextArtId, restoreIdx);
+      return;
+    }
+
+    if (restoreIdx !== null) {
       const clamped =
-        sessionCards.length > 0
-          ? Math.min(resumeExtra.cardIndex, sessionCards.length - 1)
-          : resumeExtra.cardIndex;
+        sessionCards.length > 0 ? Math.min(restoreIdx, sessionCards.length - 1) : restoreIdx;
       setCurrentIndex(clamped);
       setHasRestoredNotice(clamped > 0);
     }
-  }, [resumeExtra, sessionCards.length]);
+  }, [hydrated, resumeExtra, sessionCards.length]);
 
-  // Cold-start: initialize cards when entering study mode with empty queue
+  // Cold-start: initialize cards ONCE when entering study mode after hydration
+  // Never overwrite intentionally empty due/new/random/rescue tabs once initialized.
   useEffect(() => {
-    if (viewMode === "study" && sessionCards.length === 0) {
-      initSessionCards(activeDeckId, activeArticleId);
+    if (viewMode === "deck_hub") {
+      hasInitializedColdStartRef.current = false;
+      return;
     }
-  }, [viewMode, sessionCards.length, activeDeckId, activeArticleId, initSessionCards]);
+    if (!hydrated || viewMode !== "study" || hasInitializedColdStartRef.current) return;
+    hasInitializedColdStartRef.current = true;
+    if (sessionCards.length === 0) {
+      void initSessionCardsRef.current(
+        queueMode === "rescue" ? "DECK_RESCUE" : activeDeckIdRef.current,
+        activeArticleIdRef.current
+      );
+    }
+  }, [hydrated, viewMode, queueMode, sessionCards.length]);
 
   // Keep currentIndex clamped within bounds
   useEffect(() => {
@@ -369,14 +516,15 @@ export function useFlipCardSession({
   useEffect(() => {
     if (viewMode !== "study" || sessionCards.length === 0 || !currentFlashcard) return;
     const cardArticle =
-      ALL_ARTICLES.find((a) => a.id === currentFlashcard.articleId) ||
-      ALL_ARTICLES.find((a) => a.id === selectedArticleId);
+      ARTICLE_INDEX_MAP[currentFlashcard.articleId] ||
+      ARTICLE_INDEX_MAP[selectedArticleId];
     const modeLabels: Record<QueueMode, string> = {
       due: "遗忘复习",
       new: "新学启程",
       article: "单篇专攻",
       random: "乱序抽背",
       deck: "选册排程",
+      rescue: "高频卡壳急救",
     };
 
     saveLastSession({
@@ -402,17 +550,32 @@ export function useFlipCardSession({
 
   // ── Load State for Current Card ────────────────────────────────────────────
   useEffect(() => {
-    if (!currentFlashcard) return;
+    if (!currentFlashcard) {
+      lastCardIdRef.current = undefined;
+      setCurrentCardState(null);
+      return;
+    }
+
+    let cancelled = false;
+    const cardChanged = lastCardIdRef.current !== currentFlashcard.id;
+    if (cardChanged) {
+      lastCardIdRef.current = currentFlashcard.id;
+      setIsFlipped(false);
+    }
+
     const existing = cardStatesMap.get(currentFlashcard.id);
     if (existing) {
       setCurrentCardState(existing);
-      setIsFlipped(false);
     } else {
       getCardState(currentFlashcard.id).then((state) => {
+        if (cancelled) return;
         setCurrentCardState(state || fsrs.createInitialCard(currentFlashcard.id));
-        setIsFlipped(false);
       });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentFlashcard, cardStatesMap, fsrs]);
 
   // ── Interval Badges ───────────────────────────────────────────────────────
@@ -445,14 +608,13 @@ export function useFlipCardSession({
 
     const result = fsrs.evaluateReview(currentCardState, rating);
 
-    // Update in-memory state map
-    const nextMap = new Map(cardStatesMap);
-    nextMap.set(currentFlashcard.id, result.updatedCard);
-    setCardStatesMap(nextMap);
-
-    // Async DB persistence
-    saveCardState(result.updatedCard).catch(() => {});
-    recordReviewLog(result.reviewLog).catch(() => {});
+    // Optimistic 0ms update in StudyStore + background IndexedDB persistence
+    studyStore.upsertCard(result.updatedCard);
+    studyStore.recordDailyActivity({
+      countDelta: 1,
+      newLearnedDelta: result.reviewLog.previousState === CardState.NEW ? 1 : 0,
+    });
+    recordReviewLog(result.reviewLog, { updateDailyRecord: false }).catch(() => {});
 
     setCompletedCount((prev) => prev + 1);
 
@@ -467,6 +629,7 @@ export function useFlipCardSession({
     if (!willRequeue && currentIndex + 1 >= sessionCards.length) {
       sound.playCelebration();
       fireConfetti();
+      setIsFlipped(false);
       setSessionFinished(true);
     } else {
       setCurrentIndex((prev) => prev + 1);
@@ -476,16 +639,15 @@ export function useFlipCardSession({
   };
 
   const toggleSequentialMode = useCallback(() => {
-    setSequentialMode((prev) => {
-      const next = !prev;
-      if (next) {
-        setSessionCards((q) => sortCardsSequentially(q));
-        setCurrentIndex(0);
-        setIsFlipped(false);
-        setShowPrecedingHint(false);
-      }
-      return next;
-    });
+    const next = !sequentialModeRef.current;
+    sequentialModeRef.current = next;
+    setSequentialMode(next);
+    if (next) {
+      setSessionCards((q) => sortCardsSequentially(q));
+      setCurrentIndex(0);
+      setIsFlipped(false);
+      setShowPrecedingHint(false);
+    }
   }, []);
 
   const togglePrecedingHint = useCallback(() => {
@@ -496,7 +658,9 @@ export function useFlipCardSession({
     setTypingMode((prev) => !prev);
   }, []);
 
-  const handleSwitchMode = (mode: QueueMode) => {
+  const handleSwitchMode = async (mode: QueueMode) => {
+    const reqId = ++queueRequestIdRef.current;
+    hasInitializedColdStartRef.current = true;
     setQueueMode(mode);
     setCurrentIndex(0);
     setIsFlipped(false);
@@ -511,20 +675,26 @@ export function useFlipCardSession({
     } else if (mode === "new") {
       nextQueue = newCardsAll.slice(0, schedulerSettings.dailyNewLimit || 20);
     } else if (mode === "article") {
-      const art = ALL_ARTICLES.find((a) => a.id === selectedArticleId);
+      const art = await loadArticleById(selectedArticleId);
+      if (queueRequestIdRef.current !== reqId) return;
       nextQueue = art ? flashcardCache.getCardsForArticle(art) : [];
     } else if (mode === "random") {
       const shuffled = shuffleArray(allCards);
       nextQueue = shuffled.slice(0, 25);
+    } else if (mode === "rescue") {
+      nextQueue = [...rescueCards];
     }
-    setSessionCards(sequentialMode ? sortCardsSequentially(nextQueue) : nextQueue);
+    setSessionCards(sequentialModeRef.current ? sortCardsSequentially(nextQueue) : nextQueue);
   };
 
-  const handleSelectArticle = (articleId: string) => {
+  const handleSelectArticle = async (articleId: string) => {
+    const reqId = ++queueRequestIdRef.current;
+    hasInitializedColdStartRef.current = true;
     setSelectedArticleId(articleId);
-    const art = ALL_ARTICLES.find((a) => a.id === articleId);
+    const art = await loadArticleById(articleId);
+    if (queueRequestIdRef.current !== reqId) return;
     const nextQueue = art ? flashcardCache.getCardsForArticle(art) : [];
-    setSessionCards(sequentialMode ? sortCardsSequentially(nextQueue) : nextQueue);
+    setSessionCards(sequentialModeRef.current ? sortCardsSequentially(nextQueue) : nextQueue);
     setCurrentIndex(0);
     setIsFlipped(false);
     setShowPrecedingHint(false);
@@ -564,6 +734,7 @@ export function useFlipCardSession({
     remainingInSession: Math.max(0, sessionCards.length - currentIndex),
     newCardsAll,
     dueCardsAll,
+    rescueCards,
     cardStatesMap,
     dailyPlan,
     isLoadingStates,

@@ -86,12 +86,17 @@ export const CramCardPractice: React.FC<CramCardPracticeProps> = ({
         onClick={onFlip}
       >
         <div
-          className={`relative w-full min-h-[380px] rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm transition-transform duration-500 transform-style-3d gpu-accelerate ${
+          className={`relative w-full min-h-[380px] grid grid-cols-1 grid-rows-1 transition-transform duration-500 transform-style-3d ${
             isFlipped ? "rotate-y-180" : ""
           }`}
         >
           {/* Card Front: Context Clue */}
-          <div className="absolute inset-0 w-full h-full bg-white dark:bg-zinc-900 rounded-2xl p-6 sm:p-8 flex flex-col justify-between backface-hidden">
+          <div
+            aria-hidden={isFlipped}
+            className={`col-start-1 row-start-1 w-full h-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl p-6 sm:p-8 flex flex-col justify-between backface-hidden ${
+              isFlipped ? "pointer-events-none" : ""
+            }`}
+          >
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span className="inline-flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400">
                 <HelpCircle className="w-3.5 h-3.5" />
@@ -124,7 +129,12 @@ export const CramCardPractice: React.FC<CramCardPracticeProps> = ({
           </div>
 
           {/* Card Back: Verse & Key Points */}
-          <div className="absolute inset-0 w-full h-full bg-white dark:bg-zinc-900 rounded-2xl p-6 sm:p-8 flex flex-col justify-between rotate-y-180 backface-hidden">
+          <div
+            aria-hidden={!isFlipped}
+            className={`col-start-1 row-start-1 w-full h-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm rounded-2xl p-6 sm:p-8 flex flex-col justify-between rotate-y-180 backface-hidden ${
+              !isFlipped ? "pointer-events-none" : ""
+            }`}
+          >
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span className="inline-flex items-center gap-1.5 font-semibold text-red-600 dark:text-red-400">
                 <Sparkles className="w-3.5 h-3.5" />

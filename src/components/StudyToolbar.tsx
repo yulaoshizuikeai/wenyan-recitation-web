@@ -73,7 +73,7 @@ export const StudyToolbar: React.FC<StudyToolbarProps> = ({
       </div>
 
       {/* Right: Progress + Auxiliary Tools + Custom Actions */}
-      <div className="flex items-center gap-2 ml-auto shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-2 ml-auto min-w-0">
         {progressText && (
           <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/70 dark:border-zinc-700/60">
             <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-300">{progressText}</span>
@@ -114,7 +114,7 @@ export const StudyToolbar: React.FC<StudyToolbarProps> = ({
         )}
 
         {actions && (
-          <div className="flex items-center gap-1.5 pl-1 border-l border-zinc-200 dark:border-zinc-800">
+          <div className="flex flex-wrap items-center gap-1.5 pl-1 border-l border-zinc-200 dark:border-zinc-800">
             {actions}
           </div>
         )}

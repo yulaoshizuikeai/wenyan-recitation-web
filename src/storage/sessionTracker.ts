@@ -22,6 +22,9 @@ export interface SessionExtra {
   totalStages?: number;
   clozeLevel?: number;
   queueMode?: string;
+  deckId?: string;
+  autoStart?: boolean;
+  filterArticleOnly?: boolean;
   cardIndex?: number;
   totalCards?: number;
   goldenVerseIndex?: number;

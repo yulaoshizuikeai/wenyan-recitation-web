@@ -63,6 +63,15 @@ describe("ClozeEngine", () => {
       expect(tokensWithMisses.map(t => t.originalText)).toEqual(tokensLevel2.map(t => t.originalText));
       expect(tokensWithMisses.map(t => t.isMasked)).toEqual(tokensLevel2.map(t => t.isMasked));
     });
+
+    it("trims whitespace and deduplicates keywords before matching", () => {
+      const keywords = [" 白日 ", "白日", "  千里目\t", "   "];
+      const tokens = ClozeEngine.tokenize(samplePoem, 1, keywords);
+
+      expect(reconstructText(tokens)).toBe(samplePoem);
+      const maskedTexts = tokens.filter(t => t.isMasked).map(t => t.originalText);
+      expect(maskedTexts).toEqual(["白日", "千里目"]);
+    });
   });
 
   describe("Level 2: Half-Clause Masking (半句遮挡)", () => {

@@ -96,7 +96,7 @@
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -123,7 +123,6 @@
 .gpu-accelerate {
   will-change: transform;
   transform: translateZ(0);
-  backface-visibility: hidden;
 }
 
 /* 3D Flip Card Styles */

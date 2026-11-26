@@ -204,5 +204,27 @@ describe("Scenario diffEngine", () => {
     it("handles keyPoints list being empty gracefully", () => {
       expect(findFailedKeyPointIndices("abc", "abd", [])).toEqual([]);
     });
+
+    it("detects failure on a second occurrence of the same keyPoint in expectedAnswer", () => {
+      const expected = "其生也荣，其生也哀。";
+      const user = "其生也荣，其声也哀。";
+      const failed = findFailedKeyPointIndices(user, expected, ["生"]);
+      expect(failed).toEqual([0]);
+    });
+
+    it("aligns non-BMP surrogate-pair characters as single code points", () => {
+      const expected = "甲𠀀乙";
+      const user = "甲𠀁乙";
+      const diff = computeScenarioDiff(user, expected);
+
+      expect(diff).toEqual([
+        { char: "甲", status: "correct" },
+        { char: "𠀁", expected: "𠀀", status: "wrong" },
+        { char: "乙", status: "correct" },
+      ]);
+
+      expect(findFailedKeyPointIndices(user, expected, ["𠀀"])).toEqual([0]);
+      expect(findFailedKeyPointIndices(expected, expected, ["𠀀"])).toEqual([]);
+    });
   });
 });

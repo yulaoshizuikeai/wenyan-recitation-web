@@ -63,13 +63,13 @@ export class FSRSEngine {
   }
 
   retrievability(elapsedDays: number, stability: number): number {
-    if (stability <= 0) return 0;
+    if (!Number.isFinite(stability) || stability <= 0) return 0;
     const t = Math.max(0, elapsedDays);
     return Math.pow(1.0 + this.factor * (t / stability), this.decay);
   }
 
   nextInterval(stability: number, retention = this.requestRetention): number {
-    if (stability <= 0) return 1;
+    if (!Number.isFinite(stability) || stability <= 0) return 1;
     const interval = (stability / this.factor) * (Math.pow(retention, 1.0 / this.decay) - 1.0);
     return Math.min(Math.max(Math.round(interval), 1), this.maximumInterval);
   }
@@ -185,14 +185,19 @@ export class FSRSEngine {
   evaluateReview(card: CardFsrsState, rating: Rating, nowMillis = Date.now()): NextStateResult {
     let elapsedDays = 0;
     if (card.lastReviewTime != null) {
-      const lastDate = new Date(card.lastReviewTime).setHours(0, 0, 0, 0);
-      const nowDate = new Date(nowMillis).setHours(0, 0, 0, 0);
-      elapsedDays = Math.max(0, Math.floor((nowDate - lastDate) / 86_400_000));
+      const lastD = new Date(card.lastReviewTime);
+      const nowD = new Date(nowMillis);
+      const lastUtcMidnight = Date.UTC(lastD.getFullYear(), lastD.getMonth(), lastD.getDate());
+      const nowUtcMidnight = Date.UTC(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+      elapsedDays = Math.max(0, Math.round((nowUtcMidnight - lastUtcMidnight) / 86_400_000));
     }
     const isSameDay = card.lastReviewTime != null && elapsedDays === 0;
 
-    const safeStability = isNaN(card.stability) || card.stability <= 0 ? 0.001 : card.stability;
-    const safeDifficulty = isNaN(card.difficulty) ? 5.0 : Math.min(Math.max(card.difficulty, 1.0), 10.0);
+    const safeStability =
+      !Number.isFinite(card.stability) || card.stability <= 0 ? 0.001 : card.stability;
+    const safeDifficulty = !Number.isFinite(card.difficulty)
+      ? 5.0
+      : Math.min(Math.max(card.difficulty, 1.0), 10.0);
 
     let newStability = safeStability;
     let newDifficulty = safeDifficulty;
@@ -237,6 +242,7 @@ export class FSRSEngine {
     let scheduledDays = 0;
     let dueMillis = nowMillis;
     let lapses = card.lapses;
+    let minReviewEasyDays: number | null = null;
 
     switch (card.state) {
       case CardState.NEW:
@@ -317,12 +323,15 @@ export class FSRSEngine {
             dueMillis = nowMillis + scheduledDays * 86_400_000;
             break;
           case Rating.EASY: {
-            const r = card.lastReviewTime == null ? 1.0 : this.retrievability(elapsedDays, card.stability);
+            const r = card.lastReviewTime == null ? 1.0 : this.retrievability(elapsedDays, safeStability);
             const goodStability = isSameDay
-              ? this.shortTermStability(card.stability, Rating.GOOD)
-              : this.nextRecallStability(card.difficulty, card.stability, r, Rating.GOOD);
+              ? this.shortTermStability(safeStability, Rating.GOOD)
+              : this.nextRecallStability(safeDifficulty, safeStability, r, Rating.GOOD);
             const goodIvl = this.nextInterval(goodStability);
             const easyIvl = this.nextInterval(newStability);
+            const fuzzedGoodIvl =
+              goodIvl >= 3 ? this.applyFuzz(goodIvl, card.cardId, card.reps + 1) : goodIvl;
+            minReviewEasyDays = Math.min(fuzzedGoodIvl + 1, this.maximumInterval);
             scheduledDays = Math.min(Math.max(easyIvl, goodIvl + 1), this.maximumInterval);
             dueMillis = nowMillis + scheduledDays * 86_400_000;
             break;
@@ -352,8 +361,13 @@ export class FSRSEngine {
       }
     }
 
-    if (nextState === CardState.REVIEW && scheduledDays >= 3) {
-      scheduledDays = this.applyFuzz(scheduledDays, card.cardId, card.reps + 1);
+    if (nextState === CardState.REVIEW) {
+      if (scheduledDays >= 3) {
+        scheduledDays = this.applyFuzz(scheduledDays, card.cardId, card.reps + 1);
+      }
+      if (minReviewEasyDays !== null) {
+        scheduledDays = Math.max(scheduledDays, minReviewEasyDays);
+      }
       dueMillis = nowMillis + scheduledDays * 86_400_000;
     }
 

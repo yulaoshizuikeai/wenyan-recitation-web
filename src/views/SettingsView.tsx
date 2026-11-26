@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { sound } from "../sound/audioSynthesizer";
-import { resetAllProgress, getAllCardStates, getDailyRecords, setSetting, getSetting, importAllProgress, BackupData } from "../storage/db";
+import { resetAllProgress, getSetting, exportAllProgress, importAllProgress, BackupData } from "../storage/db";
+import { studyStore } from "../storage/studyStore";
 import { getFsrsSettings, saveFsrsSettings } from "../domain/fsrs/fsrsEngine";
 import { ankiScheduler } from "../domain/fsrs/ankiScheduler";
 import { getLocalDateString } from "../utils/date";
 import { AppTheme, toggleTheme } from "../utils/theme";
 import { useLastSession, formatRelativeTime } from "../storage/sessionTracker";
-import { useOptionalStudyApp } from "../state/StudyAppContext";
+import { useOptionalStudyApp, useRegisterModalOpen } from "../state/StudyAppContext";
 import {
   Settings as SettingsIcon,
   Sliders,
@@ -36,33 +37,76 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const onThemeChange = propOnThemeChange ?? appCtx?.setTheme;
   const [retention, setRetention] = useState<number>(0.93);
   const [factor, setFactor] = useState<number>(0.72);
-  const [dailyNewLimit, setDailyNewLimit] = useState<number>(20);
-  const [dailyReviewLimit, setDailyReviewLimit] = useState<number>(100);
+  const [dailyNewLimitInput, setDailyNewLimitInput] = useState<string>("20");
+  const [dailyReviewLimitInput, setDailyReviewLimitInput] = useState<string>("100");
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [autoResume, setAutoResume] = useState<boolean>(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMountedRef = useRef(true);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { lastSession, clearSession } = useLastSession();
 
+  useRegisterModalOpen(showResetConfirm);
+
+  const parseAndClampInt = (raw: string, fallback: number, min: number, max: number): number => {
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+  };
+
   useEffect(() => {
-    getSetting<boolean>("auto_resume_on_startup", false).then(setAutoResume);
+    isMountedRef.current = true;
+    let cancelled = false;
+    getSetting<boolean>("auto_resume_on_startup", false).then(val => {
+      if (!cancelled) setAutoResume(val);
+    });
     getFsrsSettings().then(s => {
-      setRetention(s.requestRetention);
-      setFactor(s.recitationStabilityFactor);
+      if (!cancelled) {
+        setRetention(s.requestRetention);
+        setFactor(s.recitationStabilityFactor);
+      }
     });
     ankiScheduler.getSettings().then(s => {
-      setDailyNewLimit(s.dailyNewLimit);
-      setDailyReviewLimit(s.dailyReviewLimit);
+      if (!cancelled) {
+        setDailyNewLimitInput(String(s.dailyNewLimit));
+        setDailyReviewLimitInput(String(s.dailyReviewLimit));
+      }
     });
+    return () => {
+      cancelled = true;
+      isMountedRef.current = false;
+      if (savedTimerRef.current !== null) {
+        clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = null;
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (!showResetConfirm) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowResetConfirm(false);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [showResetConfirm]);
 
   const handleToggleAutoResume = (val: boolean) => {
     setAutoResume(val);
-    setSetting("auto_resume_on_startup", val);
+    studyStore.setSettingValue("auto_resume_on_startup", val);
   };
 
   const handleSaveSettings = async () => {
+    const clampedNewLimit = parseAndClampInt(dailyNewLimitInput, 20, 5, 100);
+    const clampedReviewLimit = parseAndClampInt(dailyReviewLimitInput, 100, 20, 500);
+    setDailyNewLimitInput(String(clampedNewLimit));
+    setDailyReviewLimitInput(String(clampedReviewLimit));
+
     await saveFsrsSettings({
       requestRetention: retention,
       recitationStabilityFactor: factor
@@ -70,23 +114,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const existing = await ankiScheduler.getSettings();
     await ankiScheduler.saveSettings({
       ...existing,
-      dailyNewLimit,
-      dailyReviewLimit
+      dailyNewLimit: clampedNewLimit,
+      dailyReviewLimit: clampedReviewLimit
     });
 
+    if (!isMountedRef.current) return;
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    if (savedTimerRef.current !== null) {
+      clearTimeout(savedTimerRef.current);
+    }
+    savedTimerRef.current = setTimeout(() => {
+      savedTimerRef.current = null;
+      setSavedSuccess(false);
+    }, 2000);
   };
 
   const handleExportData = async () => {
-    const cards = await getAllCardStates();
-    const records = await getDailyRecords();
-    const exportObj = {
-      version: "2.0.0",
-      exportTime: new Date().toISOString(),
-      cards,
-      records
-    };
+    await studyStore.flush();
+    const exportObj = await exportAllProgress();
 
     const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -106,11 +151,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const text = await file.text();
       const parsed = JSON.parse(text) as BackupData;
       const result = await importAllProgress(parsed);
+      await studyStore.refreshFromDB();
+      if (!isMountedRef.current) return;
+
+      // Reload settings displayed in SettingsView immediately after restore
+      getSetting<boolean>("auto_resume_on_startup", false).then(val => {
+        if (isMountedRef.current) setAutoResume(val);
+      });
+      getFsrsSettings().then(s => {
+        if (isMountedRef.current) {
+          setRetention(s.requestRetention);
+          setFactor(s.recitationStabilityFactor);
+        }
+      });
+      ankiScheduler.getSettings().then(s => {
+        if (isMountedRef.current) {
+          setDailyNewLimitInput(String(s.dailyNewLimit));
+          setDailyReviewLimitInput(String(s.dailyReviewLimit));
+        }
+      });
+
+      const parts = [
+        `${result.cardsImported} 张卡片进度`,
+        `${result.recordsImported} 条打卡记录`
+      ];
+      if (result.logsImported > 0) parts.push(`${result.logsImported} 条复习日志`);
+      if (result.bottlenecksImported > 0) parts.push(`${result.bottlenecksImported} 篇卡壳标记`);
+      if (result.settingsImported > 0) parts.push(`${result.settingsImported} 项参数设置`);
+      if (result.preferencesRestored > 0) parts.push(`${result.preferencesRestored} 项学习偏好`);
+
       setImportStatus({
         type: "success",
-        message: `恢复成功：已导入 ${result.cardsImported} 张卡片进度与 ${result.recordsImported} 条打卡记录`
+        message: `恢复成功 (v${result.version})：已导入 ${parts.join("、")}`
       });
     } catch (err) {
+      if (!isMountedRef.current) return;
       setImportStatus({
         type: "error",
         message: err instanceof Error ? `导入失败：${err.message}` : "导入失败：JSON 文件格式无效"
@@ -121,6 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleReset = async () => {
     sound.playWrong();
     await resetAllProgress();
+    await studyStore.refreshFromDB();
     setShowResetConfirm(false);
     window.location.reload();
   };
@@ -299,8 +375,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="number"
                 min={5}
                 max={100}
-                value={dailyNewLimit}
-                onChange={e => setDailyNewLimit(parseInt(e.target.value, 10))}
+                value={dailyNewLimitInput}
+                onChange={e => setDailyNewLimitInput(e.target.value)}
+                onBlur={() =>
+                  setDailyNewLimitInput(String(parseAndClampInt(dailyNewLimitInput, 20, 5, 100)))
+                }
                 className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100"
               />
             </div>
@@ -310,8 +389,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="number"
                 min={20}
                 max={500}
-                value={dailyReviewLimit}
-                onChange={e => setDailyReviewLimit(parseInt(e.target.value, 10))}
+                value={dailyReviewLimitInput}
+                onChange={e => setDailyReviewLimitInput(e.target.value)}
+                onBlur={() =>
+                  setDailyReviewLimitInput(String(parseAndClampInt(dailyReviewLimitInput, 100, 20, 500)))
+                }
                 className="w-full px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-xs font-mono text-zinc-900 dark:text-zinc-100"
               />
             </div>
@@ -392,8 +474,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Reset Confirmation Dialog */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="确认清空所有背诵记忆数据"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-3">
               <AlertTriangle className="w-5 h-5" />
             </div>

@@ -3,11 +3,13 @@
  */
 import React from "react";
 import { Trophy } from "lucide-react";
+import { ArticleScenarioLink } from "../ArticleScenarioLink";
 
 interface FlipCardSettlementProps {
   completedCount: number;
   enableSessionLoop: boolean;
   dailyNewLimit: number;
+  articleId?: string | null;
   onStartNextGroup: () => void;
   onReturnToDeckHub: () => void;
 }
@@ -16,6 +18,7 @@ export const FlipCardSettlement: React.FC<FlipCardSettlementProps> = ({
   completedCount,
   enableSessionLoop,
   dailyNewLimit,
+  articleId,
   onStartNextGroup,
   onReturnToDeckHub,
 }) => {
@@ -45,6 +48,8 @@ export const FlipCardSettlement: React.FC<FlipCardSettlementProps> = ({
           返回选册牌组列表
         </button>
       </div>
+
+      <ArticleScenarioLink articleId={articleId} className="mt-4" />
     </div>
   );
 };

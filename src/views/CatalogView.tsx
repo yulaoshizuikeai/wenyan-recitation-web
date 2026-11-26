@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { ALL_ARTICLES, Article } from "../data/curriculumData";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { ARTICLE_INDEX, type ArticleMeta } from "../data/curriculumIndex";
+import type { Article } from "../data/curriculumTypes";
+import { loadArticleById } from "../data/curriculumLoader";
 import {
   DYNASTY_GROUPS,
   DynastyEra,
@@ -7,7 +9,8 @@ import {
   GenreCategory,
   filterArticlesMulti
 } from "../data/articleTaxonomy";
-import { VOLUME_DECKS, VolumeDeck } from "../data/ankiDecks";
+import { VOLUME_DECKS, VolumeDeck, computeDeckStats } from "../data/ankiDecks";
+import { useStudyStore } from "../storage/studyStore";
 import {
   Search,
   Layers,
@@ -27,12 +30,23 @@ import { useLastSession, LastSessionState, saveLastSession, SessionExtra } from 
 import { PickUpCard } from "../components/PickUpCard";
 import { UnderstandingCard } from "../components/UnderstandingCard";
 import { getRecommendedMode } from "../domain/recommend/modeRecommender";
-import { useOptionalStudyApp } from "../state/StudyAppContext";
+import { useOptionalStudyApp, useRegisterModalOpen } from "../state/StudyAppContext";
+
+type MasteryFilter = "ALL" | "UNLEARNED" | "LEARNING" | "MASTERED" | "BOTTLENECK";
+
+interface ArticleProgressSummary {
+  totalCards: number;
+  learnedCount: number;
+  matureCount: number;
+  masteryPct: number;
+  status: "UNLEARNED" | "LEARNING" | "MASTERED";
+  bottleneckCount: number;
+}
 
 interface CatalogViewProps {
   initialArticleId?: string;
   resumeExtra?: SessionExtra;
-  onOpenArticleInView?: (articleId: string, view: NavView) => void;
+  onOpenArticleInView?: (articleId: string, view: NavView, extra?: SessionExtra) => void;
   onResumeSession?: (session: LastSessionState) => void;
   selectedScope?: string;
 }
@@ -54,34 +68,65 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
   const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
+  const [selectedMastery, setSelectedMastery] = useState<MasteryFilter>("ALL");
   const [catalogLayout, setCatalogLayout] = useState<"volumes" | "grid">("volumes");
-  const [readingArticle, setReadingArticle] = useState<Article | null>(() => {
-    if (resumeExtra?.openReader && initialArticleId) {
-      return ALL_ARTICLES.find(a => a.id === initialArticleId) || null;
-    }
-    return null;
-  });
+  const { cards: cardStatesMap, dailyRecords: dailyRecordsMap, bottlenecks: bottlenecksMap } = useStudyStore();
+  const [readingArticle, setReadingArticle] = useState<Article | null>(null);
   const [understandingArticle, setUnderstandingArticle] = useState<Article | null>(null);
+  const loadRequestIdRef = useRef(0);
+
+  useRegisterModalOpen(Boolean(readingArticle));
+
+  const closeReadingModal = () => {
+    loadRequestIdRef.current += 1;
+    setReadingArticle(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      loadRequestIdRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!readingArticle || understandingArticle) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeReadingModal();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [readingArticle, understandingArticle]);
 
   const { lastSession, clearSession } = useLastSession();
 
   // If resumed into catalog with an openReader target, open reading modal
   useEffect(() => {
     if (resumeExtra?.openReader && initialArticleId) {
-      const art = ALL_ARTICLES.find(a => a.id === initialArticleId);
-      if (art) {
-        setReadingArticle(art);
-      }
+      let cancelled = false;
+      const reqId = ++loadRequestIdRef.current;
+      loadArticleById(initialArticleId).then(art => {
+        if (!cancelled && loadRequestIdRef.current === reqId && art) {
+          setReadingArticle(art);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
     }
   }, [resumeExtra, initialArticleId]);
 
   const handleResume = (session: LastSessionState) => {
     if (session.view === "catalog" && session.articleId) {
-      const art = ALL_ARTICLES.find(a => a.id === session.articleId);
-      if (art) {
-        setReadingArticle(art);
-        return;
-      }
+      const reqId = ++loadRequestIdRef.current;
+      loadArticleById(session.articleId).then(art => {
+        if (loadRequestIdRef.current === reqId && art) {
+          setReadingArticle(art);
+        }
+      });
+      return;
     }
     if (onResumeSession) {
       onResumeSession(session);
@@ -90,14 +135,19 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     }
   };
 
-  const handleOpenReadingModal = (article: Article) => {
-    setReadingArticle(article);
+  const handleOpenReadingModal = (meta: ArticleMeta) => {
+    const reqId = ++loadRequestIdRef.current;
+    loadArticleById(meta.id).then(art => {
+      if (loadRequestIdRef.current === reqId && art) {
+        setReadingArticle(art);
+      }
+    });
     saveLastSession({
       view: "catalog",
-      articleId: article.id,
-      articleTitle: article.title,
-      articleAuthor: article.author,
-      articleDynasty: article.dynasty,
+      articleId: meta.id,
+      articleTitle: meta.title,
+      articleAuthor: meta.author,
+      articleDynasty: meta.dynasty,
       modeName: "诗文典库",
       progressText: "全文研览",
       progressPercent: 100,
@@ -111,14 +161,66 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   // Performance chunking: render 24 initially, load more on demand
   const [visibleCount, setVisibleCount] = useState<number>(24);
 
+  // 0ms memory-derived progress & bottleneck index per article
+  const articleProgressMap = useMemo(() => {
+    const now = Date.now();
+    const map = new Map<string, ArticleProgressSummary>();
+    for (const art of ARTICLE_INDEX) {
+      const stats = computeDeckStats(art.id, art.title, [art], cardStatesMap, now);
+      const learnedCount = stats.totalCards - stats.newCount;
+      const masteryPct = stats.totalCards > 0 ? Math.round((stats.matureCount / stats.totalCards) * 100) : 0;
+      const status: ArticleProgressSummary["status"] =
+        learnedCount === 0
+          ? "UNLEARNED"
+          : stats.totalCards > 0 && masteryPct >= 80
+            ? "MASTERED"
+            : "LEARNING";
+      const bottleneckCount = bottlenecksMap.get(art.id)?.length ?? 0;
+      map.set(art.id, {
+        totalCards: stats.totalCards,
+        learnedCount,
+        matureCount: stats.matureCount,
+        masteryPct,
+        status,
+        bottleneckCount
+      });
+    }
+    return map;
+  }, [cardStatesMap, bottlenecksMap]);
+
+  const totalLearnedArticles = useMemo(() => {
+    let count = 0;
+    for (const p of articleProgressMap.values()) {
+      if (p.learnedCount > 0) count++;
+    }
+    return count;
+  }, [articleProgressMap]);
+
+  const totalReviewCount = useMemo(() => {
+    let sum = 0;
+    for (const r of dailyRecordsMap.values()) {
+      sum += r.count;
+    }
+    return sum;
+  }, [dailyRecordsMap]);
+
   const filteredArticles = useMemo(() => {
-    return filterArticlesMulti(ALL_ARTICLES, {
+    const base = filterArticlesMulti(ARTICLE_INDEX, {
       scopeId: selectedCurriculum,
       dynastyEra: selectedDynasty,
       genreCategory: selectedGenre,
-      searchQuery: searchQuery
+      searchQuery
     });
-  }, [selectedCurriculum, selectedDynasty, selectedGenre, searchQuery]);
+    if (selectedMastery === "ALL") {
+      return base;
+    }
+    return base.filter(art => {
+      const prog = articleProgressMap.get(art.id);
+      if (!prog) return false;
+      if (selectedMastery === "BOTTLENECK") return prog.bottleneckCount > 0;
+      return prog.status === selectedMastery;
+    });
+  }, [selectedCurriculum, selectedDynasty, selectedGenre, searchQuery, selectedMastery, articleProgressMap]);
 
   // Sliced articles for zero-lag rendering
   const displayedArticles = useMemo(() => {
@@ -127,7 +229,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
   // Group filtered articles by Volume Deck
   const articlesByVolume = useMemo(() => {
-    const map = new Map<string, { volume: VolumeDeck; articles: Article[] }>();
+    const map = new Map<string, { volume: VolumeDeck; articles: ArticleMeta[] }>();
     for (const vol of VOLUME_DECKS) {
       map.set(vol.id, { volume: vol, articles: [] });
     }
@@ -146,11 +248,17 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     setSelectedCurriculum("ALL");
     setSelectedDynasty("ALL");
     setSelectedGenre("ALL");
+    setSelectedMastery("ALL");
     setSearchQuery("");
     setVisibleCount(24);
   };
 
-  const hasActiveFilters = selectedCurriculum !== "ALL" || selectedDynasty !== "ALL" || selectedGenre !== "ALL" || searchQuery.trim().length > 0;
+  const hasActiveFilters =
+    selectedCurriculum !== "ALL" ||
+    selectedDynasty !== "ALL" ||
+    selectedGenre !== "ALL" ||
+    selectedMastery !== "ALL" ||
+    searchQuery.trim().length > 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
@@ -266,6 +374,33 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               {g.label}
             </button>
           ))}
+        </div>
+
+        {/* 4. Memory-Derived Mastery & Bottleneck Filter Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-[11px] text-zinc-400 w-12 shrink-0">状态：</span>
+          {([
+            { id: "ALL", label: "全部状态" },
+            { id: "UNLEARNED", label: "未背诵" },
+            { id: "LEARNING", label: "研习中" },
+            { id: "MASTERED", label: "已熟记" },
+            { id: "BOTTLENECK", label: "含卡壳标记" }
+          ] as const).map(m => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setSelectedMastery(m.id);
+                setVisibleCount(24);
+              }}
+              className={`px-2 py-0.5 rounded-md transition-colors text-xs ${
+                selectedMastery === m.id
+                  ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900 font-medium"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
 
           {hasActiveFilters && (
             <button
@@ -280,7 +415,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
       {/* Results Count Bar & Layout Toggle */}
       <div className="flex items-center justify-between text-xs text-zinc-400 mb-4 px-1">
-        <span>已筛选找到 <strong>{filteredArticles.length}</strong> 篇诗文</span>
+        <span>
+          已筛选找到 <strong>{filteredArticles.length}</strong> 篇诗文
+          {totalLearnedArticles > 0 && (
+            <span className="ml-2 text-[11px] text-zinc-400">
+              · 已研习 {totalLearnedArticles} 篇{totalReviewCount > 0 ? `（累计 ${totalReviewCount} 次）` : ""}
+            </span>
+          )}
+        </span>
 
         {/* Layout Mode Switcher */}
         <div className="flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-800 text-xs">
@@ -337,7 +479,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 </div>
 
                 <button
-                  onClick={() => onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard")}
+                  onClick={() =>
+                    onOpenArticleInView(articles[0]?.id || "art_bx1_12", "flipcard", {
+                      queueMode: "deck",
+                      deckId: volume.id,
+                      autoStart: true
+                    })
+                  }
                   className="px-3 py-1.5 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-950/20 text-sky-700 dark:text-sky-300 text-xs font-medium flex items-center gap-1.5 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors shadow-2xs"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-sky-500" />
@@ -347,7 +495,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
               {/* Volume's Articles Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {articles.map(article => (
+                {articles.map(article => {
+                  const prog = articleProgressMap.get(article.id);
+                  return (
                   <div
                     key={article.id}
                     className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/30 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors flex flex-col justify-between"
@@ -364,6 +514,16 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                               高考72
                             </span>
                           )}
+                          {prog && prog.bottleneckCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-mono text-[10px] font-medium">
+                              卡壳 {prog.bottleneckCount}
+                            </span>
+                          )}
+                          {prog && prog.learnedCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-mono text-[10px]">
+                              熟记 {prog.masteryPct}%
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -371,14 +531,19 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                         《{article.title}》
                       </h3>
 
-                      <p className="text-xs font-classical text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-3">
-                        {article.fullContent}
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                        {article.book} · {article.paragraphCount} 段 · {article.charCount} 字
                       </p>
                     </div>
 
                     <div className="flex items-center gap-1.5 pt-2 border-t border-zinc-200/60 dark:border-zinc-800/60 text-xs">
                       <button
-                        onClick={() => onOpenArticleInView(article.id, "flipcard")}
+                        onClick={() =>
+                          onOpenArticleInView(article.id, "flipcard", {
+                            queueMode: "article",
+                            autoStart: true
+                          })
+                        }
                         className="flex-1 py-1 px-2 rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-zinc-950 font-medium flex items-center justify-center gap-1 transition-colors hover:bg-sky-700"
                         title="Anki 翻转闪卡"
                       >
@@ -418,7 +583,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -428,7 +594,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
       {/* Mode B: 平铺网格 (Chunk Rendered for 60fps) */}
       {catalogLayout === "grid" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {displayedArticles.map(article => (
+          {displayedArticles.map(article => {
+            const prog = articleProgressMap.get(article.id);
+            return (
             <div
               key={article.id}
               className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
@@ -445,6 +613,16 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                         高考72
                       </span>
                     )}
+                    {prog && prog.bottleneckCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-mono text-[10px] font-medium">
+                        卡壳 {prog.bottleneckCount}
+                      </span>
+                    )}
+                    {prog && prog.learnedCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-mono text-[10px]">
+                        熟记 {prog.masteryPct}%
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -452,14 +630,19 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                   《{article.title}》
                 </h3>
 
-                <p className="text-xs font-classical text-zinc-600 dark:text-zinc-400 line-clamp-2 leading-relaxed mb-4 bg-zinc-50 dark:bg-zinc-800/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
-                  {article.fullContent}
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 mb-4 bg-zinc-50 dark:bg-zinc-800/40 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-800/60">
+                  {article.book} · {article.paragraphCount} 段 · {article.charCount} 字
                 </p>
               </div>
 
               <div className="flex items-center gap-1.5 pt-2.5 border-t border-zinc-100 dark:border-zinc-800/60 text-xs">
                 <button
-                  onClick={() => onOpenArticleInView(article.id, "flipcard")}
+                  onClick={() =>
+                    onOpenArticleInView(article.id, "flipcard", {
+                      queueMode: "article",
+                      autoStart: true
+                    })
+                  }
                   className="py-1.5 px-2 rounded-lg bg-sky-600 text-white dark:bg-sky-500 dark:text-zinc-950 font-medium flex items-center justify-center gap-1 transition-colors hover:bg-sky-700"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
@@ -497,7 +680,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -515,8 +699,17 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
 
       {/* Minimal Reader Modal */}
       {readingArticle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={closeReadingModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`精读《${readingArticle.title}》`}
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-7 max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <div>
                 <h2 className="text-xl font-classical font-semibold text-zinc-900 dark:text-zinc-100">
@@ -532,8 +725,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                 </div>
               </div>
               <button
-                onClick={() => setReadingArticle(null)}
+                onClick={closeReadingModal}
                 className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                aria-label="关闭"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -565,8 +759,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               <button
                 onClick={() => {
                   const id = readingArticle.id;
-                  setReadingArticle(null);
-                  onOpenArticleInView(id, "flipcard");
+                  closeReadingModal();
+                  onOpenArticleInView(id, "flipcard", {
+                    queueMode: "article",
+                    autoStart: true
+                  });
                 }}
                 className="py-1.5 px-3 rounded-lg bg-sky-600 text-white text-xs font-semibold flex items-center gap-1 hover:bg-sky-700 transition-colors"
               >
@@ -577,7 +774,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
               <button
                 onClick={() => {
                   const id = readingArticle.id;
-                  setReadingArticle(null);
+                  closeReadingModal();
                   onOpenArticleInView(id, "snowball");
                 }}
                 className="py-1.5 px-3 rounded-lg bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-semibold flex items-center gap-1"

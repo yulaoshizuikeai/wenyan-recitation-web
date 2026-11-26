@@ -16,6 +16,7 @@ export function normalizeRecallText(text: string): string {
 export interface TypingRecallInputProps {
   expectedAnswer: string;
   placeholder?: string;
+  successHint?: string;
   autoFocus?: boolean;
   disabled?: boolean;
   compact?: boolean;
@@ -60,6 +61,7 @@ function evaluateChars(typedRaw: string, expectedRaw: string): {
 export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
   expectedAnswer,
   placeholder = "手打盲默正解（自动忽略标点，Enter 核对）...",
+  successHint = "字形完全正确！",
   autoFocus = false,
   disabled = false,
   compact = false,
@@ -85,6 +87,7 @@ export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
     const res = evaluateChars(value, expectedAnswer);
     setSubmitted(true);
     if (res.isMatch) {
+      inputRef.current?.blur();
       sound.playCorrect();
       onResult?.(true, value);
       onSubmitCorrect?.();
@@ -123,7 +126,8 @@ export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
             onCompositionEnd={() => setIsComposing(false)}
             onKeyDown={(e) => {
               e.stopPropagation();
-              if (e.key === "Enter" && !isComposing) {
+              if (e.nativeEvent.isComposing || e.keyCode === 229 || isComposing) return;
+              if (e.key === "Enter") {
                 e.preventDefault();
                 handleSubmit();
               }
@@ -178,7 +182,7 @@ export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
           {evaluation.isMatch ? (
             <div className="flex items-center gap-1.5 font-medium">
               <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>字形完全正确！可按空格翻看并评分。</span>
+              <span>{successHint}</span>
             </div>
           ) : (
             <div className="space-y-1">

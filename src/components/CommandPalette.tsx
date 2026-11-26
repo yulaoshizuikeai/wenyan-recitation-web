@@ -10,7 +10,7 @@
  * 完整键盘导航：ArrowUp / ArrowDown / Enter / Esc（含输入法合成态 isComposing 防误触）。
  */
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Search,
@@ -31,7 +31,7 @@ import {
   CornerDownLeft,
   Compass,
 } from "lucide-react";
-import { ALL_ARTICLES, MODULES, type Article } from "../data/curriculumData";
+import { ARTICLE_INDEX, MODULES, type ArticleMeta } from "../data/curriculumIndex";
 import { getCurricularTiers } from "../data/articleTaxonomy";
 import type { NavView } from "../storage/sessionTracker";
 import type { AppTheme } from "../utils/theme";
@@ -203,6 +203,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // 教材 ID → 名称映射（供篇目按分册名搜索与副标题展示）
   const moduleNameMap = useMemo(() => {
@@ -229,13 +230,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // 打开时清空查询并聚焦输入框
   useEffect(() => {
-    if (isOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
-    }
+    if (!isOpen) return;
+    setQuery("");
+    setSelectedIndex(0);
+    const rafId = requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
 
   // 生成过滤后的命令列表
@@ -315,8 +316,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }));
 
     // 4. 古诗文篇目搜索（支持篇名、作者、朝代、教材书名/简称、体裁）
-    const matchedArticles: Article[] = q
-      ? ALL_ARTICLES.filter(a => {
+    const matchedArticles: ArticleMeta[] = q
+      ? ARTICLE_INDEX.filter(a => {
           const mod = moduleNameMap.get(a.moduleId);
           const bookText = mod ? `${mod.name} ${mod.shortName}`.toLowerCase() : "";
           return (
@@ -328,7 +329,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             (q === "72" || q === "高考" || q === "高考72篇" ? a.isGaoKao72 : false)
           );
         }).slice(0, 24)
-      : ALL_ARTICLES.slice(0, 8);
+      : ARTICLE_INDEX.slice(0, 8);
 
     const articleItems: CommandPaletteItem[] = matchedArticles.map(a => {
       const mod = moduleNameMap.get(a.moduleId);
@@ -379,15 +380,48 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     el?.scrollIntoView({ block: "nearest" });
   }, [isOpen, selectedIndex]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+  // 捕获阶段挂载到 window：支持全弹窗键盘导航、Esc 独占拦截以及 Tab 焦点陷阱
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
       // 防止中文输入法候选回车误触选中
-      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+      if (e.isComposing || e.keyCode === 229) return;
 
       if (e.key === "Escape") {
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         onClose();
+        return;
+      }
+
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusable = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
+        if (focusable.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+
+        if (e.shiftKey) {
+          if (active === first || !active || !dialogRef.current.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !active || !dialogRef.current.contains(active)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
         return;
       }
 
@@ -400,12 +434,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         e.preventDefault();
         setSelectedIndex(prev => (prev - 1 + items.length) % items.length);
       } else if (e.key === "Enter") {
+        const target = e.target as HTMLElement | null;
+        if (target && target.tagName === "BUTTON" && !target.hasAttribute("data-cmd-index")) {
+          return;
+        }
         e.preventDefault();
         items[selectedIndex]?.onExecute();
       }
-    },
-    [items, selectedIndex, onClose]
-  );
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen, items, selectedIndex, onClose]);
 
   if (!isOpen) return null;
 
@@ -424,9 +464,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={onClose}
-      onKeyDown={handleKeyDown}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="全局命令面板"
@@ -601,7 +641,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               <span>关闭</span>
             </span>
           </div>
-          <span>共收录 {ALL_ARTICLES.length} 篇古诗文</span>
+          <span>共收录 {ARTICLE_INDEX.length} 篇古诗文</span>
         </div>
       </div>
     </div>,

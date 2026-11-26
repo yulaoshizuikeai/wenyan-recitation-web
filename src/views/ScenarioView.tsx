@@ -1,11 +1,17 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { GAOKAO_SCENARIO_QUESTIONS, GaoKaoScenarioQuestion } from "../data/scenarioData";
-import { ALL_ARTICLES } from "../data/curriculumData";
+import { ARTICLE_INDEX_MAP } from "../data/curriculumIndex";
+import type { Article } from "../data/curriculumTypes";
+import { getCachedArticleById, loadArticleById } from "../data/curriculumLoader";
 import { sound } from "../sound/audioSynthesizer";
 import { fireConfetti } from "../components/Confetti";
 import { StudyWorkspaceShell } from "../components/StudyWorkspaceShell";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
-import { useOptionalStudyApp } from "../state/StudyAppContext";
+import { studyStore } from "../storage/studyStore";
+import { createFsrsEngine } from "../domain/fsrs/fsrsEngine";
+import { Rating } from "../domain/fsrs/fsrsTypes";
+import { findMatchingFlashcardsForText } from "../domain/fsrs/rescueQueue";
+import { useOptionalStudyApp, useRegisterModalOpen } from "../state/StudyAppContext";
 import {
   evaluateScenarioAnswer,
   findFailedKeyPointIndices,
@@ -50,13 +56,35 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
 
   const [wrongQuestionIndices, setWrongQuestionIndices] = useState<number[] | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [filterArticleId, setFilterArticleId] = useState<string | null>(() => {
+    if (resumeExtra?.filterArticleOnly !== true) return null;
+    const id = appCtx?.activeArticleId;
+    if (!id) return null;
+    return GAOKAO_SCENARIO_QUESTIONS.some(q => q.articleId === id) ? id : null;
+  });
+
+  useEffect(() => {
+    if (resumeExtra?.filterArticleOnly === true) {
+      const id = appCtx?.activeArticleId;
+      if (id && GAOKAO_SCENARIO_QUESTIONS.some(q => q.articleId === id)) {
+        setFilterArticleId(id);
+        setWrongQuestionIndices(null);
+      }
+    }
+  }, [resumeExtra, appCtx?.activeArticleId]);
 
   const activeQuestions = useMemo(() => {
-    if (!wrongQuestionIndices) return GAOKAO_SCENARIO_QUESTIONS;
-    return wrongQuestionIndices
-      .map(idx => GAOKAO_SCENARIO_QUESTIONS[idx])
-      .filter(Boolean);
-  }, [wrongQuestionIndices]);
+    if (wrongQuestionIndices) {
+      return wrongQuestionIndices
+        .map(idx => GAOKAO_SCENARIO_QUESTIONS[idx])
+        .filter(Boolean);
+    }
+    if (filterArticleId) {
+      const filtered = GAOKAO_SCENARIO_QUESTIONS.filter(q => q.articleId === filterArticleId);
+      if (filtered.length > 0) return filtered;
+    }
+    return GAOKAO_SCENARIO_QUESTIONS;
+  }, [wrongQuestionIndices, filterArticleId]);
 
   // Keep currentIndex clamped in bounds
   useEffect(() => {
@@ -71,12 +99,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
   const [answeredMap, setAnsweredMap] = useState<Map<number, boolean>>(new Map()); // index -> isCorrect
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
 
+  useRegisterModalOpen(showQuestionDrawer);
+
   const currentQ: GaoKaoScenarioQuestion = activeQuestions[currentIndex] || activeQuestions[0] || GAOKAO_SCENARIO_QUESTIONS[0];
 
   // Synchronize session tracker
   useEffect(() => {
     if (!currentQ || wrongQuestionIndices !== null) return;
-    const relatedArticle = ALL_ARTICLES.find(a => a.id === currentQ.articleId);
+    const relatedArticle = ARTICLE_INDEX_MAP[currentQ.articleId];
     saveLastSession({
       view: "scenario",
       articleId: currentQ.articleId,
@@ -84,15 +114,16 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
       articleAuthor: currentQ.author,
       articleDynasty: relatedArticle?.dynasty || "",
       modeName: "高考默写",
-      progressText: `第 ${currentIndex + 1} / ${GAOKAO_SCENARIO_QUESTIONS.length} 题`,
-      progressPercent: Math.min(100, Math.round(((currentIndex + 1) / GAOKAO_SCENARIO_QUESTIONS.length) * 100)),
+      progressText: `第 ${currentIndex + 1} / ${activeQuestions.length} 题`,
+      progressPercent: Math.min(100, Math.round(((currentIndex + 1) / Math.max(1, activeQuestions.length)) * 100)),
       updatedAt: Date.now(),
       extra: {
         scenarioQuestionIndex: currentIndex,
-        totalCards: GAOKAO_SCENARIO_QUESTIONS.length
+        totalCards: activeQuestions.length,
+        ...(filterArticleId ? { filterArticleOnly: true } : {})
       }
     });
-  }, [currentIndex, currentQ, wrongQuestionIndices]);
+  }, [currentIndex, currentQ, wrongQuestionIndices, activeQuestions.length, filterArticleId]);
 
   // Character-by-character LCS / Levenshtein diff evaluation
   const diffSummary = useMemo<DiffSummary | null>(() => {
@@ -105,25 +136,50 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
     return new Set(findFailedKeyPointIndices(userInput, currentQ.answer, currentQ.keyPoints));
   }, [isEvaluated, diffSummary, userInput, currentQ.answer, currentQ.keyPoints]);
 
-  const handleVerify = () => {
+  const scenarioFsrs = useMemo(() => createFsrsEngine(), []);
+
+  const handleVerify = useCallback(() => {
+    if (isEvaluated || !currentQ) return;
     setIsEvaluated(true);
     setIsAnswerRevealed(true);
 
     const isMatch = isScenarioMatch(userInput, currentQ.answer);
     if (isMatch) {
       sound.playCorrect();
+      studyStore.removeScenarioWrongItem(currentQ.id);
     } else {
       sound.playWrong();
+      studyStore.recordScenarioWrongItem({
+        questionId: currentQ.id,
+        articleId: currentQ.articleId,
+        answer: currentQ.answer
+      });
+
+      const matchedCards = findMatchingFlashcardsForText(currentQ.articleId, currentQ.answer);
+      if (matchedCards.length > 0) {
+        const snapshotCards = studyStore.getSnapshot().cards;
+        const downgraded = matchedCards.map(card => {
+          const existing = snapshotCards.get(card.id) ?? scenarioFsrs.createInitialCard(card.id);
+          const { updatedCard } = scenarioFsrs.evaluateReview(existing, Rating.AGAIN);
+          return {
+            ...updatedCard,
+            lastSource: "scenario" as const
+          };
+        });
+        studyStore.upsertCardsBatch(downgraded);
+      }
     }
+
+    studyStore.recordDailyActivity({ countDelta: 1 });
 
     setAnsweredMap(prev => {
       const next = new Map(prev);
       next.set(currentIndex, isMatch);
       return next;
     });
-  };
+  }, [isEvaluated, currentQ, userInput, scenarioFsrs, currentIndex]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentIndex + 1 < activeQuestions.length) {
       setCurrentIndex(prev => prev + 1);
     } else {
@@ -134,7 +190,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
     setUserInput("");
     setIsAnswerRevealed(false);
     setIsEvaluated(false);
-  };
+  }, [currentIndex, activeQuestions.length]);
 
   const handleRestartAll = () => {
     setWrongQuestionIndices(null);
@@ -151,12 +207,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
     const list: number[] = [];
     answeredMap.forEach((isCorrect, idx) => {
       if (!isCorrect) {
-        const globalIdx = wrongQuestionIndices ? wrongQuestionIndices[idx] : idx;
-        if (globalIdx !== undefined) list.push(globalIdx);
+        const q = activeQuestions[idx];
+        if (!q) return;
+        const globalIdx = GAOKAO_SCENARIO_QUESTIONS.findIndex(item => item.id === q.id);
+        if (globalIdx !== -1) list.push(globalIdx);
       }
     });
     return list;
-  }, [answeredMap, wrongQuestionIndices]);
+  }, [answeredMap, activeQuestions]);
 
   const handleRetryWrong = () => {
     if (wrongIndices.length === 0) return;
@@ -216,15 +274,34 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isGlobalModalOpen, isAnswerRevealed, userInput, showQuestionDrawer, isCompleted]);
+  }, [isGlobalModalOpen, isAnswerRevealed, userInput, showQuestionDrawer, isCompleted, handleVerify, handleNext]);
 
   const totalAnswered = answeredMap.size;
   const correctCount = Array.from(answeredMap.values()).filter(Boolean).length;
   const accuracyPercent = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
   const relatedArticle = useMemo(
-    () => ALL_ARTICLES.find(a => a.id === currentQ.articleId),
+    () => ARTICLE_INDEX_MAP[currentQ.articleId],
     [currentQ.articleId]
   );
+
+  const [relatedFullArticle, setRelatedFullArticle] = useState<Article | undefined>(() =>
+    getCachedArticleById(currentQ.articleId)
+  );
+
+  useEffect(() => {
+    const cached = getCachedArticleById(currentQ.articleId);
+    if (cached) {
+      setRelatedFullArticle(cached);
+      return;
+    }
+    let cancelled = false;
+    loadArticleById(currentQ.articleId).then(art => {
+      if (!cancelled) setRelatedFullArticle(art);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentQ.articleId]);
 
   return (
     <>
@@ -253,7 +330,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
             <div className="bg-red-50/50 dark:bg-red-950/20 border border-red-200/70 dark:border-red-900/40 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-zinc-700 dark:text-zinc-300">
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span>已接续高考默写进度至<strong>第 {currentIndex + 1} 题</strong>（共 {GAOKAO_SCENARIO_QUESTIONS.length} 题）</span>
+                <span>已接续高考默写进度至<strong>第 {currentIndex + 1} 题</strong>（共 {activeQuestions.length} 题）</span>
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -279,7 +356,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
             </div>
           ) : undefined
         }
-        article={relatedArticle}
+        article={relatedFullArticle}
         sidebarArticle={{
           title: currentQ.articleTitle,
           author: currentQ.author,
@@ -295,6 +372,30 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
         ]}
         sidebarHint="先自己默写完整，再看逐字比对。红字是错字，黄框「漏」是漏字，紫字「多」是多字，抄一遍比读三遍管用。"
       >
+
+      {filterArticleId && !wrongQuestionIndices && (
+        <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 rounded-xl px-3.5 py-2 flex items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200">
+          <span>
+            当前仅看《{ARTICLE_INDEX_MAP[filterArticleId]?.title ?? currentQ.articleTitle}》相关真题（共 {activeQuestions.length} 题）
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setFilterArticleId(null);
+              setCurrentIndex(0);
+              setAnsweredMap(new Map());
+              setUserInput("");
+              setIsAnswerRevealed(false);
+              setIsEvaluated(false);
+              setIsCompleted(false);
+              setHasRestoredNotice(false);
+            }}
+            className="shrink-0 font-semibold text-amber-700 dark:text-amber-300 hover:underline underline-offset-2"
+          >
+            查看全部真题
+          </button>
+        </div>
+      )}
 
       {/* Completion Summary Card or Main Question Card */}
       {isCompleted ? (
@@ -561,8 +662,17 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
 
       {/* Question Index Palette Drawer */}
       {showQuestionDrawer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowQuestionDrawer(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="题目快速跳转"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">题目快速跳转</h3>

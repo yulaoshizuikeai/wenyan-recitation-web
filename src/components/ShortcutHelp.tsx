@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { Keyboard, X } from "lucide-react";
 import { NAV_SHORTCUT_ORDER } from "./Navbar";
+import { useOptionalStudyApp } from "../state/StudyAppContext";
 
 interface ShortcutHelpProps {
   open: boolean;
@@ -51,14 +52,28 @@ const MODE_SHORTCUTS: { group: string; items: { keys: string; label: string }[] 
  * 全站快捷键帮助浮层，PC 端按 ? 打开。
  */
 export const ShortcutHelp: React.FC<ShortcutHelpProps> = ({ open, onClose }) => {
+  const appCtx = useOptionalStudyApp();
+  const isCommandPaletteOpen = Boolean(appCtx?.showCommandPalette);
+
   useEffect(() => {
     if (!open) return;
     const handle = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey && !isCommandPaletteOpen) {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        onClose();
+      }
     };
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
-  }, [open, onClose]);
+  }, [open, onClose, isCommandPaletteOpen]);
 
   if (!open) return null;
 

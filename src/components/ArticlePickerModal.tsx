@@ -21,7 +21,9 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
 import { DYNASTY_GROUPS, filterArticlesByScope, type DynastyEra } from "../data/articleTaxonomy";
-import type { Article } from "../data/curriculumData";
+import type { ArticleMeta } from "../data/curriculumIndex";
+import type { Article } from "../data/curriculumTypes";
+import { useRegisterModalOpen } from "../state/StudyAppContext";
 
 // ─── Props ──────────────────────────────────────────────────────────────────────
 
@@ -31,7 +33,7 @@ export interface ArticlePickerModalProps {
   /** 关闭弹窗回调 */
   onClose: () => void;
   /** 可选篇目列表（已按当前 scope 过滤或传入全量列表配合 selectedScope） */
-  articles: Article[];
+  articles: (ArticleMeta | Article)[];
   /** 当前选中的篇目 ID */
   activeArticleId?: string;
   /** 选择篇目后的回调 */
@@ -60,16 +62,18 @@ export const ArticlePickerModal: React.FC<ArticlePickerModalProps> = ({
   const [dynastyFilter, setDynastyFilter] = useState<DynastyEra>("ALL");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useRegisterModalOpen(isOpen);
+
   // 打开时聚焦搜索框
   useEffect(() => {
-    if (isOpen) {
-      setSearchQuery("");
-      setDynastyFilter("ALL");
-      // 延迟聚焦以等待动画完成
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-      });
-    }
+    if (!isOpen) return;
+    setSearchQuery("");
+    setDynastyFilter("ALL");
+    // 延迟聚焦以等待动画完成
+    const rafId = requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
 
   // Esc 关闭
@@ -122,6 +126,9 @@ export const ArticlePickerModal: React.FC<ArticlePickerModalProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >

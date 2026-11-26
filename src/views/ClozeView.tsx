@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import { ClozeToken } from "../domain/cloze/clozeEngine";
 import {
@@ -6,6 +6,7 @@ import {
   tokenizeArticleParagraphs,
   isTokenEffectiveMasked
 } from "../domain/cloze/keywordExtractor";
+import { isArticlePhoneticsLoaded, loadArticlePhonetics } from "../data/articlePhonetics";
 import { sound } from "../sound/audioSynthesizer";
 import { filterArticlesByScope } from "../data/articleTaxonomy";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
@@ -80,6 +81,19 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
   const [typingRecallEnabled, setTypingRecallEnabled] = useState<boolean>(false);
   const [activeTypingTokenId, setActiveTypingTokenId] = useState<number | null>(null);
 
+  const prevArticleIdRef = useRef(selectedArticleId);
+  useEffect(() => {
+    if (prevArticleIdRef.current !== selectedArticleId) {
+      prevArticleIdRef.current = selectedArticleId;
+      setRevealedTokenIds(new Set());
+      setRevealAll(false);
+      setHasRestoredNotice(false);
+      setShowPhonetics(false);
+      setShowUnderstanding(false);
+      setShowArticlePicker(false);
+    }
+  }, [selectedArticleId]);
+
   const fontSizes = [
     { label: "小", className: "text-base sm:text-lg leading-relaxed" },
     { label: "标准", className: "text-lg sm:text-xl leading-loose" },
@@ -91,10 +105,30 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
     return ALL_ARTICLES.find(a => a.id === selectedArticleId) || ALL_ARTICLES[0];
   }, [selectedArticleId]);
 
+  const [phoneticsRevision, setPhoneticsRevision] = useState(0);
+
+  useEffect(() => {
+    if (isArticlePhoneticsLoaded(currentArticle.id)) return;
+    let cancelled = false;
+    loadArticlePhonetics(currentArticle.id)
+      .then(() => {
+        if (!cancelled) {
+          setPhoneticsRevision(rev => rev + 1);
+        }
+      })
+      .catch(() => {
+        // 忽略分片加载失败，保留注释关键词降级工作
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentArticle.id]);
+
   // Extract cloze keywords: 难词注音表中的考点词优先，其次注释词；剔除纯虚词并控制密度
   const clozeKeywords = useMemo(() => {
+    void phoneticsRevision;
     return extractClozeKeywords(currentArticle);
-  }, [currentArticle]);
+  }, [currentArticle, phoneticsRevision]);
 
   // Tokenize text into paragraphs
   const paragraphs = useMemo(() => {
@@ -223,9 +257,13 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
   const handleSelectArticleFromPicker = (articleId: string) => {
     setSelectedArticleId(articleId);
     appCtx?.setActiveArticleId(articleId);
+    appCtx?.setResumeExtra(undefined);
     setShowArticlePicker(false);
     setRevealedTokenIds(new Set());
     setRevealAll(false);
+    setHasRestoredNotice(false);
+    setShowPhonetics(false);
+    setShowUnderstanding(false);
   };
 
   return (
@@ -420,6 +458,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
                   </button>
                 </div>
                 <TypingRecallInput
+                  key={activeTypingToken.id}
                   expectedAnswer={activeTypingToken.originalText}
                   autoFocus
                   compact

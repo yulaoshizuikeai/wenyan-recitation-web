@@ -1,1 +1,2 @@
-/*    /index.html   200
+# Cloudflare Pages automatically serves /index.html for unknown non-asset routes when no 404.html exists,
+# without hijacking missing /assets/*.js chunks with 200 text/html.

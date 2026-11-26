@@ -525,9 +525,9 @@ export const GAOKAO_SCENARIO_QUESTIONS: GaoKaoScenarioQuestion[] = [
     "articleTitle": "兰亭集序",
     "author": "王羲之",
     "prompt": "《兰亭集序》中描写兰亭集会虽无管弦乐队之盛，但借着引流水行酒觞、咏诗抒怀也足以畅叙幽深情怀的名句是：",
-    "answer": "虽无管弦之盛，一觞一咏，亦足以畅叙幽情。",
+    "answer": "虽无丝竹管弦之盛，一觞一咏，亦足以畅叙幽情。",
     "keyPoints": [
-      "管弦之盛",
+      "丝竹管弦之盛",
       "一觞一咏 (‘觞’酒杯)",
       "畅叙幽情"
     ],

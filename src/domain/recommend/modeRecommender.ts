@@ -1,4 +1,4 @@
-import { Article } from "../../data/curriculumData";
+import type { Article } from "../../data/curriculumTypes";
 import { PUNCTUATION_SET } from "../cloze/clozeEngine";
 
 export type RecitationMode = "snowball" | "cloze";
@@ -24,8 +24,13 @@ export function countNetLength(text: string): number {
  * - 正文净长 >= 250 字的长文重文脉，适合滚雪球逐联串联
  * - 篇幅较短的诗词曲韵文押韵对仗，适合刻漏字（挖空）默写
  */
-export function getRecommendedMode(article: Article): ModeRecommendation {
-  const netLength = countNetLength(article.fullContent);
+export function getRecommendedMode(
+  article: Pick<Article, "fullContent"> | { netLength: number; fullContent?: string }
+): ModeRecommendation {
+  const netLength =
+    "netLength" in article && typeof article.netLength === "number"
+      ? article.netLength
+      : countNetLength(article.fullContent ?? "");
 
   if (netLength >= 250) {
     return {

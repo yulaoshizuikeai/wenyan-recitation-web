@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { Navbar } from "./components/Navbar";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { CommandPalette } from "./components/CommandPalette";
+import { PwaUpdateToast } from "./components/PwaUpdateToast";
 import { DashboardView } from "./views/DashboardView";
 import { StudyAppProvider, useStudyApp } from "./state/StudyAppContext";
 import { useWorkspaceShortcuts } from "./hooks/useWorkspaceShortcuts";
@@ -13,6 +14,71 @@ const ScenarioView = React.lazy(() => import("./views/ScenarioView").then(m => (
 const CramModeView = React.lazy(() => import("./views/CramModeView").then(m => ({ default: m.CramModeView })));
 const CatalogView = React.lazy(() => import("./views/CatalogView").then(m => ({ default: m.CatalogView })));
 const SettingsView = React.lazy(() => import("./views/SettingsView").then(m => ({ default: m.SettingsView })));
+
+class ViewErrorBoundary extends React.Component<
+  { children: React.ReactNode; resetKey?: string },
+  { hasError: boolean; errorMessage: string }
+> {
+  constructor(props: { children: React.ReactNode; resetKey?: string }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: "" };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return {
+      hasError: true,
+      errorMessage: error?.message || "页面资源加载失败",
+    };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[ViewErrorBoundary]", error, info);
+  }
+
+  componentDidUpdate(prevProps: { resetKey?: string }) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, errorMessage: "" });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="max-w-lg mx-auto my-16 px-6 py-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-center space-y-4 shadow-sm">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+            视图加载遇到问题
+          </h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+            可能是版本更新后旧缓存未刷新，或网络暂时中断所致。请重新加载页面恢复使用。
+          </p>
+          {this.state.errorMessage && (
+            <p className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 break-all">
+              {this.state.errorMessage}
+            </p>
+          )}
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg text-xs font-medium bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              重新加载页面
+            </button>
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, errorMessage: "" })}
+              className="px-4 py-2 rounded-lg text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              重试当前视图
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function ViewLoadingFallback() {
   return (
@@ -34,6 +100,7 @@ function AppShell() {
     soundEnabled,
     showShortcuts,
     showCommandPalette,
+    localModalCount,
     setCurrentView,
     setSelectedScope,
     setTheme,
@@ -50,7 +117,7 @@ function AppShell() {
     onToggleShortcuts: toggleShortcuts,
     onToggleCommandPalette: toggleCommandPalette,
     onSwitchView: setCurrentView,
-    isModalOpen: showShortcuts || showCommandPalette,
+    isModalOpen: showShortcuts || showCommandPalette || localModalCount > 0,
   });
 
   return (
@@ -62,15 +129,17 @@ function AppShell() {
       <main className="flex-1 pb-10">
         {currentView === "dashboard" && <DashboardView />}
 
-        <Suspense fallback={<ViewLoadingFallback />}>
-          {currentView === "cram" && <CramModeView />}
-          {currentView === "snowball" && <SnowballView />}
-          {currentView === "flipcard" && <FlipCardView />}
-          {currentView === "cloze" && <ClozeView />}
-          {currentView === "scenario" && <ScenarioView />}
-          {currentView === "catalog" && <CatalogView />}
-          {currentView === "settings" && <SettingsView />}
-        </Suspense>
+        <ViewErrorBoundary resetKey={currentView}>
+          <Suspense fallback={<ViewLoadingFallback />}>
+            {currentView === "cram" && <CramModeView />}
+            {currentView === "snowball" && <SnowballView />}
+            {currentView === "flipcard" && <FlipCardView />}
+            {currentView === "cloze" && <ClozeView />}
+            {currentView === "scenario" && <ScenarioView />}
+            {currentView === "catalog" && <CatalogView />}
+            {currentView === "settings" && <SettingsView />}
+          </Suspense>
+        </ViewErrorBoundary>
       </main>
 
       {/* Minimal Footer (hidden on mobile to make room for bottom dock) */}
@@ -101,6 +170,7 @@ function AppShell() {
       />
 
       <ShortcutHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      <PwaUpdateToast />
     </div>
   );
 }

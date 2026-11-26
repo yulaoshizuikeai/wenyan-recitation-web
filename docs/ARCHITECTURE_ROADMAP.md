@@ -127,14 +127,14 @@ flowchart LR
 
 ### Phase 3：Notion 式客户端缓存引擎与统一存储
 
-- [ ] **3.1 构建响应式客户端缓存层（Client RecordCache）**
+- [x] **3.1 构建响应式客户端缓存层（Client RecordCache）**
   - 在 `src/storage/db.ts` 之上建立内存态 `StudyStore`：应用启动时异步预水合 `cards`、`daily_records`、`bottlenecks`、`settings` 到 `Map` 索引
   - 评分、打卡、标记卡壳点均先乐观更新内存态并即时驱动各组件重新派生统计，后台微任务/批量异步写入 IndexedDB
   - **验收**：`DashboardView` 指标卡片、`AnkiDeckHub` 三色统计、`CatalogView` 掌握度筛选均实现 0ms 内存派生与跨视图实时一致，不再各处重复 `getAllCardStates()`
-- [ ] **3.2 建立「一份数据、多视图共享」的标准化实体索引**
+- [x] **3.2 建立「一份数据、多视图共享」的标准化实体索引**
   - 建立只读组合层 `src/data/articleRepository.ts`，以 `articleId` 和段落/句索引为主键，统一关联正文、`flashcardCache` 卡片、`goldenVersesData` 金句、`scenarioData` 高考真题、`bottlenecks` 卡壳标记
   - **验收**：在滚雪球标记卡壳的段落/句子，可在闪卡或典库详情中关联可见，减少各视图各自 `.find()` / `.filter()` 拼装
-- [ ] **3.3 统一本地持久化与全量备份 Schema v2**
+- [x] **3.3 统一本地持久化与全量备份 Schema v2**
   - 将零散在 `localStorage` 的业务状态（`wenyan_cram_ratings`、滚雪球进度 `snowball_stage_*`、牌组展开偏好等）收敛至统一存储适配器（或迁移进 IndexedDB `settings` / 专属 store，保留初次启动自动迁移）
   - 升级备份导出/导入格式为 `version: 2`，覆盖 `cards`、`logs`、`daily_records`、`bottlenecks`、`settings` 与各模式学习进度，同时向下兼容旧版（无 `version` 或 `v1`）JSON 导入
   - **验收**：清空浏览器数据后通过单份 JSON 导入，可完整恢复 FSRS 记忆曲线、卡壳标记、抱佛脚掌握标记与用户参数设置
@@ -143,14 +143,14 @@ flowchart LR
 
 ### Phase 4：按需分片加载与真正离线 PWA
 
-- [ ] **4.1 拆分「轻量篇目索引」与「正文数据」**
+- [x] **4.1 拆分「轻量篇目索引」与「正文数据」**
   - 从 `curriculumData.ts` 派生构建期轻量化元数据索引（仅含 `id`、`title`、`author`、`dynasty`、`book`、`genre`、`isGaoKao72`、`charCount`、`paragraphCount`，预计 < 25 KB），供首页、导航栏范围弹窗、典库列表与命令面板首屏使用
   - 篇目正文、注释、译文按册或按篇动态 `import()` 懒加载，移除 `flashcardCache.ts` 在模块顶层同步预热带来的首屏绑定
   - **验收**：首屏主包体积（当前 `423.99 kB`）显著下降，切换单个篇目正文无感知延迟
-- [ ] **4.2 注音与理解串讲数据按片按需加载**
+- [x] **4.2 注音与理解串讲数据按片按需加载**
   - 将 `src/data/articleUnderstanding.ts` 与 `src/data/articlePhonetics.ts` 改为按 `articleId` 路由到 `part1~5.ts` 的动态 `import()`，仅在打开注音/理解抽屉或进入 L1 挖空时按需加载对应分片
   - **验收**：`UnderstandingCard` 自身代码包从当前的 `131.42 kB` 剥离掉全量语料，仅保留抽屉 UI 逻辑
-- [ ] **4.3 接入 PWA 离线缓存与可安装支持**
+- [x] **4.3 接入 PWA 离线缓存与可安装支持**
   - 接入 `vite-plugin-pwa`，生成 Web App Manifest（名称、图标、独立窗口模式）与 Service Worker，预缓存 `dist/` 下所有静态资源与按需分片 JS
   - 处理静态资源更新提示（新版本就绪后温和提示用户刷新激活，避免打断背诵心流）
   - **验收**：部署到 Cloudflare Pages 并首次访问后，断开网络（飞行模式）刷新页面仍可正常打开并完成全流程背诵与 FSRS 评分
@@ -187,14 +187,14 @@ flowchart LR
 
 ### Track L3：跨模式记忆闭环与长篇分段策略（配合 Phase 3）
 
-- [ ] **L3.1 打通五模式记忆回流与「高频卡壳急救包」**
+- [x] **L3.1 打通五模式记忆回流与「高频卡壳急救包」**
   - 高考默写答错题目自动触发对应篇目/句子的 FSRS 降权或提前复习，并将有效练习计入 `daily_records` 热力图
   - 聚合滚雪球 `bottlenecks`、抱佛脚 `stuck` 与高考默写错题，在闪卡主控台与首页提供「高频卡壳急救队列」一键专刷
   - **验收**：任意模式标记的卡壳/错题均可在统一急救队列中复练并更新复习记录
-- [ ] **L3.2 长篇支持「按自然段分段滚雪球」与「段间接口衔接卡」**
+- [x] **L3.2 长篇支持「按自然段分段滚雪球」与「段间接口衔接卡」**
   - 对 `paragraphs.length >= 3` 的长篇，支持选择「分段攻坚（每段独立滚雪球并阶段结算）」或「全篇通滚」
   - 针对古文最易跳段/记串的痛点，自动生成「上段末句 → 默写下段首句」的段间接口卡
   - **验收**：长篇中途退出前可先完成单段结算沉淀记忆，段与段衔接处可单独训练
-- [ ] **L3.3 背诵结算联动本篇高考理解性默写**
+- [x] **L3.3 背诵结算联动本篇高考理解性默写**
   - 在滚雪球或单篇闪卡完成结算页，自动检索 `GAOKAO_SCENARIO_QUESTIONS` 中匹配当前 `articleId` 的真题，提供「顺手做 N 道本篇高考真题」直达入口
   - **验收**：背完《劝学》《赤壁赋》等有真题篇目后，可一键进入本篇专项情境默写检验

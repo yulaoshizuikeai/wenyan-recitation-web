@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { parseHashRoute, formatHashRoute } from "../src/state/StudyAppContext";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { parseHashRoute, formatHashRoute, useRegisterModalOpen } from "../src/state/StudyAppContext";
+import {
+  saveLastSession,
+  getLastSession,
+  clearLastSession,
+  type SessionExtra
+} from "../src/storage/sessionTracker";
 import { ALL_ARTICLES } from "../src/data/curriculumData";
 
 describe("URL Hash Route Synchronization (parseHashRoute & formatHashRoute)", () => {
@@ -110,6 +116,86 @@ describe("URL Hash Route Synchronization (parseHashRoute & formatHashRoute)", ()
         const parsed = parseHashRoute(hash);
         expect(parsed).toEqual(route);
       }
+    });
+  });
+
+  describe("SessionExtra extensions & StudyAppContext exports", () => {
+    class FakeStorage implements Storage {
+      private map = new Map<string, string>();
+      get length(): number {
+        return this.map.size;
+      }
+      clear(): void {
+        this.map.clear();
+      }
+      getItem(key: string): string | null {
+        return this.map.has(key) ? this.map.get(key)! : null;
+      }
+      key(index: number): string | null {
+        return Array.from(this.map.keys())[index] ?? null;
+      }
+      removeItem(key: string): void {
+        this.map.delete(key);
+      }
+      setItem(key: string, value: string): void {
+        this.map.set(key, String(value));
+      }
+    }
+
+    beforeEach(() => {
+      const storage = new FakeStorage();
+      const fakeWindow = {
+        localStorage: storage,
+        dispatchEvent: vi.fn()
+      };
+      vi.stubGlobal("localStorage", storage);
+      vi.stubGlobal("window", fakeWindow);
+      vi.stubGlobal(
+        "CustomEvent",
+        class FakeCustomEvent<T = unknown> {
+          type: string;
+          detail: T;
+          constructor(type: string, init?: { detail?: T }) {
+            this.type = type;
+            this.detail = init?.detail as T;
+          }
+        }
+      );
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("exports useRegisterModalOpen hook from StudyAppContext", () => {
+      expect(typeof useRegisterModalOpen).toBe("function");
+    });
+
+    it("preserves extended SessionExtra fields (deckId, autoStart, filterArticleOnly) in sessionTracker", () => {
+      const extra: SessionExtra = {
+        queueMode: "deck",
+        deckId: "VOL_BX1",
+        autoStart: true,
+        filterArticleOnly: true,
+        cardIndex: 3
+      };
+
+      saveLastSession({
+        view: "flipcard",
+        articleId: validArticleId,
+        modeName: "翻转闪卡",
+        progressText: "选册排程 · 卡片 4 / 20",
+        progressPercent: 20,
+        updatedAt: 1770000000000,
+        extra
+      });
+
+      const loaded = getLastSession();
+      expect(loaded).not.toBeNull();
+      expect(loaded?.extra).toEqual(extra);
+
+      clearLastSession();
+      expect(getLastSession()).toBeNull();
     });
   });
 });
