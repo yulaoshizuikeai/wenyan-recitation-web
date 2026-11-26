@@ -20,13 +20,14 @@
 - **易错字手打盲默校验（Typing Recall）**：新增 `src/components/TypingRecallInput.tsx`。在刻漏字 L1 关键词挖空和闪卡学习中提供「手打盲默」开关，学生可直接键盘敲入挖空字词，正确时自动刮开并步进下一词，强化高考「嘴会背、手不写错」的字形准确度。
 - **闪卡兄弟卡同日避让（Sibling Burying）**：在 `src/domain/fsrs/ankiScheduler.ts` 中基于 `segmentId` 识别同句正反挖空卡（出句背对句 / 对句背出句），每日新学与复习队列默认同一天只排一张，另一张自动顺延至次日，避免同一句在同一次学习中反复出现、挤占新学配额。
 - **滚雪球写卡与闪卡配额隔离**：在 `src/domain/cloze/snowballEngine.ts` 与 `src/storage/db.ts`（写入标记 `source: "snowball"`）中，长文滚雪球通关批量沉淀卡片时按 `segmentId` 归并主卡，且在闪卡调度中予以避让，防止单篇 20+ 联长文瞬间撑爆当日闪卡新学和复习额度。
-- **Vitest 单元测试套件与自动化 CI 门禁**：接入 `vitest` 与 `npm test`（`vitest run`），并更新 `.github/workflows/deploy.yml`，在 GitHub Actions 构建部署前自动执行单测。新增针对 FSRS 引擎、排程避让、LCS 文本对齐、关键词提取、日期跨零点以及全 100 篇注音/理解数据完整性的自动化测试。
+- **Vitest 单元测试套件**：接入 `vitest` 与 `npm test`（`vitest run`）。新增针对 FSRS 引擎、排程避让、LCS 文本对齐、关键词提取、日期跨零点以及全 100 篇注音/理解数据完整性的自动化测试。
 
 ### 变更
 
+- **移除 GitHub Actions 工作流**：删除 `.github/workflows/deploy.yml`，改由 Cloudflare Pages 原生 GitHub 自动集成在每次推送后直接完成构建与上线，避免因缺少 GitHub Secrets 导致的无效报错红叉。
 - **超长学习视图拆解解耦**：
-  - `src/views/FlipCardView.tsx`（原 869 行）解耦抽离为 `src/hooks/useFlipCardSession.ts`（会话状态机与 FSRS 评分）、`src/components/flipcard/FlipCardBody.tsx`（卡片主体与操作栏）与 `src/components/flipcard/FlipCardSummary.tsx`（结算统计卡片），主视图收敛至 328 行。
-  - `src/views/CramModeView.tsx`（原 863 行）拆分为 `src/components/cram/CramReciteCard.tsx`（单卡背诵）与 `src/components/cram/CramQuickList.tsx`（列表速查），主视图收敛至 220 行。
+  - `src/views/FlipCardView.tsx`（原 869 行）解耦抽离为 `src/hooks/useFlipCardSession.ts`（会话状态机与 FSRS 评分）、`src/components/flipcard/FlipCardBody.tsx`（卡片主体与操作栏）与 `src/components/flipcard/FlipCardSettlement.tsx`（结算统计卡片），主视图收敛至 328 行。
+  - `src/views/CramModeView.tsx`（原 863 行）拆分为 `src/components/cram/CramCardPractice.tsx`（单卡背诵）、`src/components/cram/CramReferenceList.tsx`（列表速查）与 `src/components/cram/CramHeaderFilters.tsx`（顶栏筛选），主视图收敛至 352 行。
 - **学习视图接入统一工作区外壳**：`SnowballView`、`ClozeView`、`ScenarioView`、`FlipCardView` 统一迁移至 `<StudyWorkspaceShell>`，消除了各视图内重复维护的外框布局与 `keydown` 监听。
 - **视图组件剥离纯算法与数据逻辑**：`ScenarioView.tsx` 移除内联标点正则与逐位比对循环，改调 `diffEngine.ts`；`ClozeView.tsx` 移除内联虚词集合与正文字符串匹配，改调 `keywordExtractor.ts`。
 - **顶栏接入轻量状态与命令面板入口**：`Navbar.tsx` 与全站 8 个视图通过 `useOptionalStudyApp()` 接入集中状态，消除从 `App.tsx` 的逐层 Props 传递（Prop Drilling）。
