@@ -130,6 +130,7 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
   // Persist ratings optimistically via unified StudyStore (+ localStorage mirror)
   const handleRate = useCallback((verseId: string, rating: CramRating) => {
     studyStore.setCramRating(verseId, rating);
+    studyStore.recordDailyActivity({ countDelta: 1 });
 
     if (rating === "mastered") sound.playCorrect();
     else if (rating === "stuck") sound.playWrong();

@@ -1,4 +1,10 @@
-import { ClozeEngine, ClozeToken, PUNCTUATION_SET as CLOZE_PUNCTUATION_SET } from "./clozeEngine";
+import {
+  ClozeEngine,
+  ClozeKeywordInput,
+  ClozeKeywordSpec,
+  ClozeToken,
+  PUNCTUATION_SET as CLOZE_PUNCTUATION_SET
+} from "./clozeEngine";
 import { getCachedArticlePhonetics } from "../../data/articlePhonetics";
 
 /**
@@ -82,7 +88,7 @@ export interface KeywordFilterOptions {
 
 /**
  * 纯函数：对候选关键词列表进行清洗、虚词过滤、正文存在性校验与密度控制。
- * 
+ *
  * 规则：
  * 1. 词长在 [minLength, maxLength] 之间；
  * 2. 排除文言纯虚词；
@@ -118,18 +124,20 @@ export function filterCandidateKeywords(
 
 /**
  * 提取指定篇目的 L1 遮挡关键词（纯函数 / 确定性输出）。
- * 
+ *
  * 提取优先级：
  * 1. 难词注音表 (`Phonetics`) 中的考点词眼（含单字生僻字、通假字）；
  * 2. 注释表 (`annotations`) 中的词条；
  * 3. 经过 `filterCandidateKeywords` 过滤虚词、校验正文存在性并按长词优先截取前 20 个。
  */
-const defaultPhoneticsFetcher = (articleId: string): Array<{ word: string }> =>
+const defaultPhoneticsFetcher = (
+  articleId: string
+): Array<{ word: string; context?: string | string[] }> =>
   getCachedArticlePhonetics(articleId) ?? [];
 
 export function extractClozeKeywords(
   article: { id: string; annotations: readonly string[] | string[]; fullContent: string },
-  phoneticsFetcher: (articleId: string) => Array<{ word: string }> = defaultPhoneticsFetcher,
+  phoneticsFetcher: (articleId: string) => Array<{ word: string; context?: string | string[] }> = defaultPhoneticsFetcher,
   options?: KeywordFilterOptions
 ): string[] {
   const candidates: string[] = [];
@@ -150,8 +158,39 @@ export function extractClozeKeywords(
 }
 
 /**
+ * 提取带语境限定信息的 L1 遮挡关键词规格，
+ * 避免单字通假字/破读字（如“女”“王”“知”）误伤全文普通字义。
+ */
+export function extractClozeKeywordSpecs(
+  article: { id: string; annotations: readonly string[] | string[]; fullContent: string },
+  phoneticsFetcher: (articleId: string) => Array<{ word: string; context?: string | string[] }> = defaultPhoneticsFetcher,
+  options?: KeywordFilterOptions
+): ClozeKeywordSpec[] {
+  const phoneticsList = phoneticsFetcher(article.id) || [];
+  const contextByWord = new Map<string, string[]>();
+
+  for (const entry of phoneticsList) {
+    if (!entry.word || !entry.context) continue;
+    const list = Array.isArray(entry.context) ? entry.context : [entry.context];
+    const existing = contextByWord.get(entry.word) ?? [];
+    for (const c of list) {
+      if (c && !existing.includes(c)) existing.push(c);
+    }
+    if (existing.length > 0) {
+      contextByWord.set(entry.word, existing);
+    }
+  }
+
+  const words = extractClozeKeywords(article, phoneticsFetcher, options);
+  return words.map(word => {
+    const ctx = contextByWord.get(word);
+    return ctx && ctx.length > 0 ? { word, context: ctx } : { word };
+  });
+}
+
+/**
  * 将线性 ClozeToken 序列拆分为按自然段分段的二维数组，并为换行切片分配稳定子 ID。
- * 
+ *
  * @param tokens 经由 ClozeEngine 生成的标记列表
  * @param startSubTokenId 跨行分片起始 ID，避免与原生 token.id 冲突
  */
@@ -196,7 +235,7 @@ export function splitTokensIntoParagraphs(
 export function tokenizeArticleParagraphs(
   fullContent: string,
   level: number,
-  keywords: string[]
+  keywords: readonly ClozeKeywordInput[]
 ): ClozeToken[][] {
   const tokens = ClozeEngine.tokenize(fullContent, level, keywords);
   return splitTokensIntoParagraphs(tokens);

@@ -16,6 +16,7 @@ import {
   Keyboard,
   ListOrdered,
   Volume2,
+  Undo2,
 } from "lucide-react";
 import { Flashcard, matchPhoneticsForText } from "../../data/flashcardGenerator";
 import {
@@ -41,6 +42,8 @@ export interface FlipCardBodyProps {
   hasRestoredNotice: boolean;
   onFlip: () => void;
   onRate: (rating: Rating) => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
   onResetIndex: () => void;
   onDismissRestoredNotice: () => void;
   // Track L2.2 & L2.3 optional controls
@@ -62,6 +65,8 @@ export const FlipCardBody: React.FC<FlipCardBodyProps> = ({
   hasRestoredNotice,
   onFlip,
   onRate,
+  canUndo = false,
+  onUndo,
   onResetIndex,
   onDismissRestoredNotice,
   showPrecedingHint = false,
@@ -155,6 +160,17 @@ export const FlipCardBody: React.FC<FlipCardBodyProps> = ({
         </span>
 
         <div className="flex items-center gap-1.5">
+          {canUndo && onUndo && (
+            <button
+              type="button"
+              onClick={onUndo}
+              title="撤回上一张评分 (Z)"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium transition-colors"
+            >
+              <Undo2 className="w-3 h-3" />
+              <span>撤回</span>
+            </button>
+          )}
           {onToggleSequentialMode && (
             <button
               type="button"
@@ -253,7 +269,7 @@ export const FlipCardBody: React.FC<FlipCardBodyProps> = ({
               )}
 
               <div className="my-6 text-center space-y-3">
-                <p className="text-xl sm:text-2xl font-classical font-medium text-zinc-900 dark:text-zinc-100 leading-relaxed tracking-wide">
+                <p className="text-xl sm:text-2xl font-classical font-medium text-zinc-900 dark:text-zinc-100 leading-relaxed tracking-wide whitespace-pre-line">
                   {currentFlashcard.frontPrompt}
                 </p>
               </div>
@@ -325,6 +341,17 @@ export const FlipCardBody: React.FC<FlipCardBodyProps> = ({
                       )}
                     </span>
                   ))}
+                </div>
+              )}
+
+
+              {/* Matched Classical Annotations */}
+              {currentFlashcard.backNotes && (
+                <div className="mt-3 p-2.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-line">
+                  <span className="font-sans font-medium text-amber-700 dark:text-amber-400 mr-1.5">
+                    【词句注释】
+                  </span>
+                  {currentFlashcard.backNotes}
                 </div>
               )}
 

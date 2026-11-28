@@ -112,12 +112,24 @@ export interface DeckCardStats {
 /**
  * Get article metadata for a specific volume deck id
  */
+function dedupeArticlesByTitleAuthor(list: ArticleMeta[]): ArticleMeta[] {
+  const seen = new Set<string>();
+  const result: ArticleMeta[] = [];
+  for (const item of list) {
+    const key = `${item.title}::${item.author}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
 export function getArticlesForDeck(deckId: string): ArticleMeta[] {
   if (deckId === "DECK_ALL") {
-    return ARTICLE_INDEX;
+    return dedupeArticlesByTitleAuthor(ARTICLE_INDEX);
   }
   if (deckId === "DECK_GAOKAO72") {
-    return ARTICLE_INDEX.filter(a => a.isGaoKao72);
+    return dedupeArticlesByTitleAuthor(ARTICLE_INDEX.filter(a => a.isGaoKao72));
   }
   const vol = VOLUME_DECKS.find(v => v.id === deckId);
   if (vol) {

@@ -3,6 +3,8 @@ import { ALL_ARTICLES, ARTICLE_MAP, MODULES, type Article } from "../src/data/cu
 import { CORE_GOLDEN_VERSES } from "../src/data/goldenVersesData";
 import { GAOKAO_SCENARIO_QUESTIONS } from "../src/data/scenarioData";
 import { generateFlashcardsForArticle } from "../src/data/flashcardGenerator";
+import { getArticlesForDeck } from "../src/data/ankiDecks";
+import { normalizeClassicalText } from "../src/domain/fsrs/rescueQueue";
 import {
   getCachedArticlePhonetics,
   loadAllArticlePhonetics,
@@ -154,9 +156,11 @@ describe("Data Integrity & Coverage Verification", () => {
     const qxCards = generateFlashcardsForArticle(quanxue);
     expect(qxCards.some(c => c.maskedSegment === "青，取之于蓝")).toBe(true);
     expect(qxCards.some(c => c.maskedSegment === "冰，水为之")).toBe(true);
-    const junziYue = qxCards.find(c => c.maskedSegment === "君子曰");
-    expect(junziYue).toBeDefined();
-    expect(junziYue!.frontPrompt).toContain("：学不可以已。");
+    // Speaker intro "君子曰：" stays visible as context and is never blanked as the answer
+    expect(qxCards.some(c => c.maskedSegment === "君子曰")).toBe(false);
+    const xueBuKeYiYi = qxCards.find(c => c.maskedSegment === "学不可以已");
+    expect(xueBuKeYiYi).toBeDefined();
+    expect(xueBuKeYiYi!.frontPrompt).toContain("君子曰：");
 
     const shishuo = ARTICLE_MAP["art_bx1_13"];
     const ssCards = generateFlashcardsForArticle(shishuo);
@@ -179,5 +183,78 @@ describe("Data Integrity & Coverage Verification", () => {
     const unit1Cards = synCards.filter(c => c.unitIndex === 1);
     expect(unit0Cards.every(c => c.frontPrompt.endsWith("，"))).toBe(true);
     expect(unit1Cards.every(c => c.frontPrompt.endsWith("？"))).toBe(true);
+  });
+
+  it("verifies 100% of scenarioData answers match their article fullContent", () => {
+    const mismatches: string[] = [];
+    for (const q of GAOKAO_SCENARIO_QUESTIONS) {
+      const article = ARTICLE_MAP[q.articleId];
+      if (!article) continue;
+      if (!normalizeClassicalText(article.fullContent).includes(normalizeClassicalText(q.answer))) {
+        mismatches.push(`${q.id} (${article.title}): ${q.answer}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("verifies 100% of goldenVersesData verses match their article fullContent", () => {
+    const mismatches: string[] = [];
+    for (const gv of CORE_GOLDEN_VERSES) {
+      const article = ARTICLE_MAP[gv.articleId];
+      if (!article) continue;
+      if (!normalizeClassicalText(article.fullContent).includes(normalizeClassicalText(gv.verse))) {
+        mismatches.push(`${gv.id} (${article.title}): ${gv.verse}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it("verifies 2-clause couplet flashcards prioritize UPPER_PROMPT_LOWER as the sole primary card and have no duplicate prompts per article", () => {
+    const speakerBlanks: string[] = [];
+    const badPrimarySegments: string[] = [];
+    const duplicatePrompts: string[] = [];
+    const speakerRe = /^[^，。！？；：]{1,7}(?:曰|云|问|叹曰|歌曰|对曰)$/;
+
+    for (const article of ALL_ARTICLES) {
+      const cards = generateFlashcardsForArticle(article);
+      const prompts = new Set<string>();
+      const bySegment = new Map<string, typeof cards>();
+
+      for (const card of cards) {
+        if (prompts.has(card.frontPrompt)) {
+          duplicatePrompts.push(`${article.id}: ${card.frontPrompt}`);
+        }
+        prompts.add(card.frontPrompt);
+
+        if (card.maskedSegment && speakerRe.test(card.maskedSegment) && card.frontPrompt.includes("⟦ ________ ⟧：")) {
+          speakerBlanks.push(`${article.id}: ${card.maskedSegment}`);
+        }
+
+        const bucket = bySegment.get(card.segmentId) ?? [];
+        bucket.push(card);
+        bySegment.set(card.segmentId, bucket);
+      }
+
+      for (const [segId, segCards] of bySegment.entries()) {
+        if (segCards.length === 2 && segCards.some(c => c.cardType === "UPPER_PROMPT_LOWER")) {
+          const primaries = segCards.filter(c => c.isPrimary);
+          if (primaries.length !== 1 || primaries[0].cardType !== "UPPER_PROMPT_LOWER") {
+            badPrimarySegments.push(segId);
+          }
+        }
+      }
+    }
+
+    expect(speakerBlanks).toEqual([]);
+    expect(badPrimarySegments).toEqual([]);
+    expect(duplicatePrompts).toEqual([]);
+  });
+
+  it("deduplicates duplicate title+author articles in DECK_GAOKAO72 and DECK_ALL", () => {
+    for (const deckId of ["DECK_GAOKAO72", "DECK_ALL"]) {
+      const articles = getArticlesForDeck(deckId);
+      const keys = articles.map(a => `${a.title}::${a.author}`);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
   });
 });

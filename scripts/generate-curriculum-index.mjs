@@ -27,6 +27,8 @@ function countNetLength(text) {
 
 const END_PUNCTS = new Set(["。", "！", "？", "；"]);
 const SENTENCE_REGEX = /[^。！？；\n]+[。！？；]?[”’"']?/g;
+const SPEAKER_INTRO_RE = /^[^，。！？；：]{1,7}(?:曰|云|问|叹曰|歌曰|对曰)$/;
+function isSpeakerIntroClause(c) { return c.sepAfter === "：" && SPEAKER_INTRO_RE.test(c.text); }
 
 /**
  * Mirrors flashcardGenerator.ts clause-splitting logic to compute exact generatedCardCount
@@ -113,7 +115,12 @@ function countGeneratedFlashcards(article) {
           }
         }
         for (const chunk of chunks) {
-          count += chunk.length;
+          if (chunk.length === 1) {
+            count += 1;
+          } else {
+            const targets = chunk.filter((c) => !isSpeakerIntroClause(c));
+            count += targets.length > 0 ? targets.length : 1;
+          }
         }
       }
     }

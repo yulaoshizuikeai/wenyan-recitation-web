@@ -157,7 +157,7 @@ export const understanding3: Record<string, ArticleUnderstanding> = {
 
 export const phonetics3: Record<string, PhoneticsEntry[]> = {
   "art_xb1_05": [
-    { word: "瓠", pinyin: "hù", meaning: "葫芦" },
+    { word: "瓠", pinyin: "hù", context: ["大瓠之种", "瓠落无所容"], meaning: "葫芦" },
     { word: "龟", pinyin: "jūn", meaning: "同「皲」，皮肤受冻开裂；不龟手即手不生冻疮", isTongjia: true },
     { word: "洴澼絖", pinyin: "píng pì kuàng", meaning: "在水中漂洗丝絮" },
     { word: "鬻", pinyin: "yù", meaning: "卖" },
@@ -171,7 +171,7 @@ export const phonetics3: Record<string, PhoneticsEntry[]> = {
     { word: "亏", pinyin: "kuī", meaning: "损害" },
     { word: "恶", pinyin: "wū", meaning: "同「乌」，怎么、哪里", isTongjia: true },
     { word: "亡", pinyin: "wú", meaning: "同「无」，没有", isTongjia: true },
-    { word: "贼", pinyin: "zéi", meaning: "伤害，残害" }
+    { word: "贼", pinyin: "zéi", context: ["乱臣贼子", "贼其君"], meaning: "伤害，残害" }
   ],
   "art_xb1_recite_01": [
     { word: "袍", pinyin: "páo", meaning: "长衣，这里指战袍" },
