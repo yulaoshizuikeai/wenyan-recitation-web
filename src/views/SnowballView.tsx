@@ -101,8 +101,15 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
   }, [selectedArticleId]);
 
   const isLongArticle = (currentArticle?.paragraphs.length ?? 0) >= 3;
-  const [practiceMode, setPracticeMode] = useState<SnowballPracticeMode>("full");
-  const [activeParagraphIndex, setActiveParagraphIndex] = useState<number>(0);
+  const [practiceMode, setPracticeMode] = useState<SnowballPracticeMode>(() => {
+    const savedMode = resumeExtra?.practiceMode;
+    return savedMode === "paragraph" || savedMode === "full" ? savedMode : "full";
+  });
+  const [activeParagraphIndex, setActiveParagraphIndex] = useState<number>(() => {
+    const savedPara = resumeExtra?.activeParagraphIndex;
+    return typeof savedPara === "number" && savedPara >= 0 ? savedPara : 0;
+  });
+  const [readyArticleId, setReadyArticleId] = useState<string | null>(null);
   const [settledParagraphs, setSettledParagraphs] = useState<Set<number>>(new Set());
   const [bridgeIndex, setBridgeIndex] = useState<number>(0);
   const [bridgeRevealed, setBridgeRevealed] = useState<boolean>(false);
@@ -170,28 +177,39 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
     setShowUnderstanding(false);
   }, [selectedArticleId]);
 
-  // Reset sub-mode state when switching articles
+  // Reset sub-mode state when switching articles (preserving resumed paragraph mode on initial load)
+  const prevArticleIdRef = useRef<string | undefined>(currentArticle?.id);
   useEffect(() => {
     if (!currentArticle) return;
-    setPracticeMode("full");
-    setActiveParagraphIndex(0);
-    setSettledParagraphs(new Set());
-    setBridgeIndex(0);
-    setBridgeRevealed(false);
-  }, [currentArticle?.id]);
+    if (prevArticleIdRef.current !== currentArticle.id) {
+      prevArticleIdRef.current = currentArticle.id;
+      setPracticeMode("full");
+      setActiveParagraphIndex(0);
+      setSettledParagraphs(new Set());
+      setBridgeIndex(0);
+      setBridgeRevealed(false);
+      setReadyArticleId(null);
+    } else if (
+      resumeExtra &&
+      resumeExtra !== consumedResumeExtraRef.current &&
+      resumeExtra.practiceMode === "paragraph" &&
+      isLongArticle
+    ) {
+      setPracticeMode("paragraph");
+      if (
+        typeof resumeExtra.activeParagraphIndex === "number" &&
+        resumeExtra.activeParagraphIndex >= 0 &&
+        resumeExtra.activeParagraphIndex < currentArticle.paragraphs.length
+      ) {
+        setActiveParagraphIndex(resumeExtra.activeParagraphIndex);
+      }
+    }
+  }, [currentArticle?.id, isLongArticle, resumeExtra]);
 
-  // Load saved full-article progress when article, mode, or store hydration changes
+  // Load saved progress when article, mode, or store hydration changes
   useEffect(() => {
     if (!currentArticle || stages.length === 0) return;
-    if (effectiveMode !== "full") {
-      setCurrentStageIndex(0);
-      setHasRestoredProgress(false);
-      setRevealedUnitIndices(new Set());
-      return;
-    }
 
-    // Consume resumeExtra.stageIndex at most once per resumeExtra object (and never for another article)
-    let targetIdx = 0;
     const canApplyResume =
       resumeExtra &&
       resumeExtra.stageIndex !== undefined &&
@@ -200,6 +218,20 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
       (resumeExtra !== consumedResumeExtraRef.current ||
         appliedResumeArticleRef.current === currentArticle.id);
 
+    if (effectiveMode !== "full") {
+      const targetIdx = canApplyResume ? resumeExtra.stageIndex! : 0;
+      if (canApplyResume) {
+        consumedResumeExtraRef.current = resumeExtra;
+        appliedResumeArticleRef.current = currentArticle.id;
+      }
+      setCurrentStageIndex(targetIdx);
+      setHasRestoredProgress(targetIdx > 0);
+      setRevealedUnitIndices(new Set());
+      setReadyArticleId(currentArticle.id);
+      return;
+    }
+
+    let targetIdx = 0;
     if (canApplyResume) {
       targetIdx = resumeExtra.stageIndex!;
       consumedResumeExtraRef.current = resumeExtra;
@@ -216,11 +248,20 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
       setHasRestoredProgress(false);
     }
     setRevealedUnitIndices(new Set());
-  }, [currentArticle?.id, effectiveMode, stages.length, resumeExtra, storeSnapshot.hydrated]);
+    setReadyArticleId(currentArticle.id);
+  }, [currentArticle?.id, effectiveMode, activeParagraphIndex, stages.length, resumeExtra, storeSnapshot.hydrated]);
 
-  // Synchronize session tracker whenever article, mode, or stage changes
+  // Synchronize session tracker only after stageIndex is synced for currentArticle
   useEffect(() => {
-    if (!currentArticle || effectiveMode === "bridge" || stages.length === 0) return;
+    if (
+      !currentArticle ||
+      readyArticleId !== currentArticle.id ||
+      effectiveMode === "bridge" ||
+      stages.length === 0 ||
+      currentStageIndex >= stages.length
+    ) {
+      return;
+    }
     const modeLabel =
       effectiveMode === "paragraph"
         ? `分段滚雪球 · 第${activeParagraphIndex + 1}段`
@@ -236,11 +277,13 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
       progressPercent: Math.min(100, Math.round(((currentStageIndex + 1) / Math.max(1, stages.length)) * 100)),
       updatedAt: Date.now(),
       extra: {
-        stageIndex: effectiveMode === "full" ? currentStageIndex : 0,
-        totalStages: stages.length
+        stageIndex: currentStageIndex,
+        totalStages: stages.length,
+        practiceMode: effectiveMode,
+        ...(effectiveMode === "paragraph" ? { activeParagraphIndex } : {})
       }
     });
-  }, [currentArticle, effectiveMode, activeParagraphIndex, currentStageIndex, stages.length]);
+  }, [currentArticle, readyArticleId, effectiveMode, activeParagraphIndex, currentStageIndex, stages.length]);
 
   const currentStage = stages[currentStageIndex];
   const isCompleted = stages.length > 0 && currentStageIndex >= stages.length - 1;
@@ -333,6 +376,22 @@ export const SnowballView: React.FC<SnowballViewProps> = ({
         fireConfetti();
         if (effectiveMode === "full") {
           studyStore.setSnowballStage(currentArticle.id, 0);
+          saveLastSession({
+            view: "snowball",
+            articleId: currentArticle.id,
+            articleTitle: currentArticle.title,
+            articleAuthor: currentArticle.author,
+            articleDynasty: currentArticle.dynasty,
+            modeName: "长卷滚雪球",
+            progressText: "全篇已完成",
+            progressPercent: 100,
+            updatedAt: Date.now(),
+            extra: {
+              stageIndex: 0,
+              totalStages: stages.length,
+              practiceMode: "full"
+            }
+          });
         } else {
           setSettledParagraphs(prev => new Set(prev).add(activeParagraphIndex));
         }

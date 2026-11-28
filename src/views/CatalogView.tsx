@@ -65,7 +65,12 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const onResumeSession = propOnResumeSession ?? appCtx?.resumeSession;
   const selectedScope = propSelectedScope ?? appCtx?.selectedScope ?? "ALL";
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCurriculum, setSelectedCurriculum] = useState<string>("ALL");
+  const [selectedCurriculum, setSelectedCurriculum] = useState<string>(() => selectedScope || "ALL");
+
+  useEffect(() => {
+    setSelectedCurriculum(selectedScope || "ALL");
+    setVisibleCount(24);
+  }, [selectedScope]);
   const [selectedDynasty, setSelectedDynasty] = useState<DynastyEra>("ALL");
   const [selectedGenre, setSelectedGenre] = useState<GenreCategory>("ALL");
   const [selectedMastery, setSelectedMastery] = useState<MasteryFilter>("ALL");

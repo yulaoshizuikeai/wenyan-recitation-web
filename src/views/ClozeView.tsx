@@ -472,7 +472,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
         </div>
 
         {/* L1 Typing Recall Bar (Track L2.3) */}
-        {level === 1 && typingRecallEnabled && (
+        {level === 1 && typingRecallEnabled && !revealAll && (
           <div className="p-3.5 rounded-xl bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/70 dark:border-sky-900/40 space-y-2">
             {activeTypingToken ? (
               <>

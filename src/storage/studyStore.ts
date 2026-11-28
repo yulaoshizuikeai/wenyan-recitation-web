@@ -238,10 +238,7 @@ export class StudyStore {
         this.dailyRecords = new Map();
         this.bottlenecks = new Map();
         this.settings = new Map();
-        this.dirtyCardIds.clear();
-        this.dirtyDailyDates.clear();
-        this.dirtyBottleneckIds.clear();
-        this.dirtySettingKeys.clear();
+        this.clearDirtyTracking();
         this.updateSnapshot();
         return;
       }

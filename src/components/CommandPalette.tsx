@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { ARTICLE_INDEX, MODULES, type ArticleMeta } from "../data/curriculumIndex";
 import { getCurricularTiers } from "../data/articleTaxonomy";
-import type { NavView } from "../storage/sessionTracker";
+import type { NavView, SessionExtra } from "../storage/sessionTracker";
 import type { AppTheme } from "../utils/theme";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ export interface CommandPaletteProps {
   /** 切换视图回调 */
   onSelectView: (view: NavView) => void;
   /** 打开指定篇目（可选指定目标视图，不传则沿用合适模式） */
-  onSelectArticle: (articleId: string, view: NavView) => void;
+  onSelectArticle: (articleId: string, view: NavView, extra?: SessionExtra) => void;
   /** 切换教材范围回调 */
   onSelectScope: (scope: string) => void;
   /** 切换主题回调 */
@@ -341,7 +341,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         subtitle: `${a.dynasty} · ${a.author}${bookLabel ? ` · ${bookLabel}` : ""} · 在「${targetArticleViewLabel}」打开`,
         badge: a.isGaoKao72 ? "高考72篇" : undefined,
         isActive: a.id === activeArticleId,
-        onExecute: executeAndClose(() => onSelectArticle(a.id, targetArticleView)),
+        onExecute: executeAndClose(() => {
+          const extra: SessionExtra | undefined =
+            targetArticleView === "flipcard"
+              ? { queueMode: "article", autoStart: true }
+              : targetArticleView === "catalog"
+                ? { openReader: true }
+                : undefined;
+          onSelectArticle(a.id, targetArticleView, extra);
+        }),
       };
     });
 

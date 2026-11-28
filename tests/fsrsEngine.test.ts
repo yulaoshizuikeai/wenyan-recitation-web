@@ -66,14 +66,15 @@ describe("FSRSEngine", () => {
         expect(res.reviewLog.rating).toBe(Rating.AGAIN);
       });
 
-      it("Rating 2 (HARD): transitions to LEARNING step 0 with 1.5x learning step due interval", () => {
+      it("Rating 2 (HARD): transitions to LEARNING step 0 with midpoint between step 0 and step 1", () => {
         const card = engine.createInitialCard("c1");
         const res = engine.evaluateReview(card, Rating.HARD, mockNow);
 
         expect(res.updatedCard.state).toBe(CardState.LEARNING);
         expect(res.updatedCard.step).toBe(0);
         expect(res.updatedCard.reps).toBe(1);
-        expect(res.updatedCard.dueTime).toBe(mockNow + Math.floor(60_000 * 1.5));
+        // Default learningSteps = [60_000, 600_000] -> midpoint = 330_000ms (5.5m -> "5分")
+        expect(res.updatedCard.dueTime).toBe(mockNow + Math.round((60_000 + 600_000) / 2));
       });
 
       it("Rating 3 (GOOD): advances to LEARNING step 1 (10 minutes) when multi-step learning configured", () => {
@@ -269,9 +270,9 @@ describe("FSRSEngine", () => {
       const card = engine.createInitialCard("c_preview");
       const previews = engine.previewIntervals(card, mockNow);
 
-      expect(previews[Rating.AGAIN]).toMatch(/\d+分/);
-      expect(previews[Rating.HARD]).toMatch(/\d+分/);
-      expect(previews[Rating.GOOD]).toMatch(/\d+分/);
+      expect(previews[Rating.AGAIN]).toBe("1分");
+      expect(previews[Rating.HARD]).toBe("5分");
+      expect(previews[Rating.GOOD]).toBe("10分");
       expect(previews[Rating.EASY]).toMatch(/\d+天/);
     });
 

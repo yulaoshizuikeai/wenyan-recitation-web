@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { ARTICLE_INDEX, ARTICLE_INDEX_MAP } from "../data/curriculumIndex";
 import { VOLUME_DECKS, VolumeDeck, computeDeckStats } from "../data/ankiDecks";
+import { filterArticlesByScope } from "../data/articleTaxonomy";
 import { Heatmap } from "../components/Heatmap";
 import { useStudyStore, studyStore } from "../storage/studyStore";
 import { buildRescueFlashcardQueue } from "../domain/fsrs/rescueQueue";
@@ -165,10 +166,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     ].filter(Boolean);
   }, []);
 
+  const scopedArticleIndex = useMemo(
+    () => filterArticlesByScope(ARTICLE_INDEX, selectedScope),
+    [selectedScope]
+  );
+
   const volumeDeckSummaries = useMemo(() => {
     const now = Date.now();
-    return VOLUME_DECKS.map(vol => {
-      const arts = ARTICLE_INDEX.filter(a => vol.moduleIds.includes(a.moduleId));
+    const list = VOLUME_DECKS.map(vol => {
+      const arts = scopedArticleIndex.filter(a => vol.moduleIds.includes(a.moduleId));
       const stats = computeDeckStats(vol.id, vol.name, arts, cardStatesMap, now);
       return {
         volume: vol,
@@ -176,7 +182,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         stats
       };
     });
-  }, [cardStatesMap]);
+    return selectedScope === "ALL" ? list : list.filter(item => item.articles.length > 0);
+  }, [scopedArticleIndex, selectedScope, cardStatesMap]);
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-6 space-y-5 animate-fade-slide-up">

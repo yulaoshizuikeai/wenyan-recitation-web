@@ -24,6 +24,11 @@
 - **修复双句闪卡默认优先排「倒背」的 `isPrimary` 缺陷**：`flashcardGenerator.ts` 原先将两句对联的正反两张卡同时标为 `isPrimary: true`，导致 `ankiScheduler.burySiblingCards` 首日总是选中索引 0 的「对句测出句（倒背）」。现修正为双句对联仅 `UPPER_PROMPT_LOWER`（出句测对句）为 `isPrimary: true`，确保新学首日顺背、次日再练倒背。
 - **修复日内学习步长无法在单次会话毕业与切页绕过兄弟卡避让的问题**：`useFlipCardSession.ts` 现在会将评分后仍处于 `LEARNING` / `RELEARNING` 状态的卡片在会话内自动重排回队列，使新卡可在单次学习内顺利毕业为 `REVIEW`；切换「待复习 / 新卡 / 选篇 / 随机」标签时统一应用 `burySiblingCards`；当选册今日排程清零时不再静默回退塞入前 20 张旧卡，而是展示明确的完成状态。
 - **修复语料与真题/金句不一致及《登岳阳楼》重复收录问题**：替换 `scenarioData.ts` 中混入的初中《论语》真题（`gk_lunyu_02`）并对齐《离骚(节选)》真题与正文；修正 `goldenVersesData.ts` 中 8 处与当前正文不一致的异文/节选条目（如《桂枝香》「归帆去棹」、《陈情表》「五尺之僮」等）；在 `ankiDecks.ts` 中对 `DECK_GAOKAO72` 与 `DECK_ALL` 按篇名+作者去重，避免重复收录的《登岳阳楼》产生双份卡片。
+- **修复全量备份 v2 导入残留旧数据及重置脏状态未清问题**：`db.ts` 的 `importAllProgress` 在执行全量 v2 恢复时先按模块清空旧表再写入，避免旧设备的卡片、打卡记录、日志、卡壳点与设置残留为幽灵数据（同时保持对 v1 与旧版精简 `2.0.0` 备份的兼容）；`studyStore.ts` 在 `reset` 事件中同步清理 `dirtyDailyDeltas` 与 `committedDailyDuringLoad`。
+- **修复闪卡断点续学丢失 `deckId`/队列模式、切卡异步竞态与每日复习配额误扣**：`useFlipCardSession.ts` 在 `saveLastSession` 中补齐 `deckId` 与 `autoStart` 并支持按原 `queueMode`（含 `due` / `new` / `random` / `article` / `deck` 与第 1 张卡）精确恢复；切卡异步查库前先清空 `currentCardState` 并在 `handleRate` 中校验 `cardId` 与结束态，防止快速按键错写上一张卡；传入 `buildDailyPlan` 的今日复习数改为扣减新学与滚雪球次数，不再误扣 `dailyReviewLimit`。
+- **修复 `Cmd/Ctrl + K` 命令面板跳转失效与弹窗叠层**：`CommandPalette.tsx` 在闪卡页与诗文典库页选择篇目时自动附带 `{ queueMode: "article", autoStart: true }` / `{ openReader: true }`，确保直接打开目标篇目；`useWorkspaceShortcuts.ts` 与 `App.tsx` 阻止其他模态框打开时叠加唤起命令面板。
+- **修复高考默写空提交、抱佛脚乱序重排、手打盲默按位错位与 FSRS 新卡 `HARD` 徽标冲突**：`ScenarioView.tsx` 禁止空输入提交、读取用户 FSRS 参数、仅对已学卡片降权并补写 `ReviewLog`；`CramModeView.tsx` 将乱序洗牌前置于「仅看薄弱」过滤并增加按键防抖/连按保护；`TypingRecallInput.tsx` 接入 `diffEngine` 的 Levenshtein 对齐算法；`fsrsEngine.ts` 将多步学习下的新卡 `HARD` 间隔改为前两步均值（`5分`），与 `AGAIN`（`1分`）清晰区分。
+- **修复滚雪球切篇脏断点、分段恢复、`AnkiDeckHub` 状态更新副作用、全局范围筛选与 L1 全览冲突**：`SnowballView.tsx` 防止切篇写入旧联次、完赛后重置断点并支持恢复分段攻坚进度；`AnkiDeckHub.tsx` 将 `studyStore.setExpandedDecks` 移出 `setState` 更新函数；`CatalogView.tsx` 与 `DashboardView.tsx` 接入顶栏全局 `selectedScope` 筛选；`ClozeView.tsx` 在开启全览时自动隐藏 L1 手打盲默栏。
 
 ## [1.1.0] - 2026-11-26
 

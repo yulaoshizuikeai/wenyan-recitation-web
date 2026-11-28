@@ -155,8 +155,9 @@ export function useFlipCardSession({
     if (
       resumeExtra?.autoStart ||
       resumeExtra?.deckId ||
-      (resumeExtra?.cardIndex !== undefined && resumeExtra.cardIndex > 0) ||
-      resumeExtra?.queueMode === "rescue"
+      resumeExtra?.cardIndex !== undefined ||
+      resumeExtra?.queueMode === "rescue" ||
+      (resumeExtra?.queueMode && ["due", "new", "article", "random", "deck"].includes(resumeExtra.queueMode))
     ) {
       return "study";
     }
@@ -266,6 +267,12 @@ export function useFlipCardSession({
     );
   }, [dailyRecordsMap, todayStr]);
 
+  // Exclude new cards & snowball sessions from today's review quota count
+  const todayReviewedCount = Math.max(
+    0,
+    todayRecord.count - todayRecord.newLearned - (todayRecord.snowballCount ?? 0)
+  );
+
   // ── Daily Plan ────────────────────────────────────────────────────────────
   const dailyPlan = useMemo(() => {
     return ankiScheduler.buildDailyPlan(
@@ -273,10 +280,10 @@ export function useFlipCardSession({
       cardStatesMap,
       schedulerSettings,
       todayRecord.newLearned,
-      todayRecord.count,
+      todayReviewedCount,
       now
     );
-  }, [loadedAllArticles, cardStatesMap, schedulerSettings, todayRecord, now]);
+  }, [loadedAllArticles, cardStatesMap, schedulerSettings, todayRecord.newLearned, todayReviewedCount, now]);
 
   // ── Due / New card lists ───────────────────────────────────────────────────
   const dueCardsAll = useMemo(() => {
@@ -322,10 +329,16 @@ export function useFlipCardSession({
   sequentialModeRef.current = sequentialMode;
 
   const initSessionCards = useCallback(
-    async (deckId: string, articleId?: string, restoreIndex?: number | null) => {
+    async (
+      deckId: string,
+      articleId?: string,
+      restoreIndex?: number | null,
+      explicitMode?: QueueMode
+    ) => {
       const reqId = ++queueRequestIdRef.current;
+      const shouldBury = schedulerSettings.burySiblings !== false;
 
-      if (deckId === "DECK_RESCUE") {
+      if (deckId === "DECK_RESCUE" || explicitMode === "rescue") {
         const rescueQueue = sequentialMode ? sortCardsSequentially(rescueCards) : [...rescueCards];
         const targetIdx =
           restoreIndex !== undefined && restoreIndex !== null && rescueQueue.length > 0
@@ -338,30 +351,61 @@ export function useFlipCardSession({
         setShowPrecedingHint(false);
         setCompletedCount(0);
         setSessionFinished(false);
+        setUndoStack([]);
         return;
       }
 
-      let targetArtList: Article[] = [];
-      if (articleId) {
-        const a = await loadArticleById(articleId);
+      let queue: Flashcard[] = [];
+
+      if (explicitMode === "due" || explicitMode === "new" || explicitMode === "random") {
+        const scopeArts = await loadArticlesForScope(selectedScope);
         if (queueRequestIdRef.current !== reqId) return;
-        targetArtList = a ? [a] : [];
+        const scopeCards = flashcardCache.getCardsForArticles(scopeArts);
+        const nowMs = Date.now();
+        if (explicitMode === "due") {
+          const duePool = scopeCards
+            .filter((card) => {
+              const st = cardStatesMap.get(card.id);
+              return st && st.state !== CardState.NEW && st.dueTime <= nowMs;
+            })
+            .sort((a, b) => (cardStatesMap.get(a.id)?.dueTime || 0) - (cardStatesMap.get(b.id)?.dueTime || 0));
+          queue = (shouldBury ? burySiblingCards(duePool).selected : duePool).slice(0, 30);
+        } else if (explicitMode === "new") {
+          const newPool = scopeCards.filter((card) => {
+            const st = cardStatesMap.get(card.id);
+            return !st || st.state === CardState.NEW;
+          });
+          queue = (shouldBury ? burySiblingCards(newPool).selected : newPool).slice(
+            0,
+            schedulerSettings.dailyNewLimit || 20
+          );
+        } else {
+          const shuffled = shuffleArray(scopeCards);
+          queue = (shouldBury ? burySiblingCards(shuffled).selected : shuffled).slice(0, 25);
+        }
       } else {
-        const metas = getArticlesForDeck(deckId);
-        targetArtList = await loadArticlesByIds(metas.map((m) => m.id));
-        if (queueRequestIdRef.current !== reqId) return;
+        let targetArtList: Article[] = [];
+        if (articleId) {
+          const a = await loadArticleById(articleId);
+          if (queueRequestIdRef.current !== reqId) return;
+          targetArtList = a ? [a] : [];
+        } else {
+          const metas = getArticlesForDeck(deckId);
+          targetArtList = await loadArticlesByIds(metas.map((m) => m.id));
+          if (queueRequestIdRef.current !== reqId) return;
+        }
+
+        const plan = ankiScheduler.buildDailyPlan(
+          targetArtList,
+          cardStatesMap,
+          schedulerSettings,
+          todayRecord.newLearned,
+          todayReviewedCount,
+          Date.now()
+        );
+
+        queue = ankiScheduler.createSessionQueue(plan);
       }
-
-      const plan = ankiScheduler.buildDailyPlan(
-        targetArtList,
-        cardStatesMap,
-        schedulerSettings,
-        todayRecord.newLearned,
-        todayRecord.count,
-        Date.now()
-      );
-
-      let queue = ankiScheduler.createSessionQueue(plan);
 
       if (sequentialMode) {
         queue = sortCardsSequentially(queue);
@@ -381,7 +425,7 @@ export function useFlipCardSession({
       setSessionFinished(false);
       setUndoStack([]);
     },
-    [cardStatesMap, schedulerSettings, todayRecord, sequentialMode, rescueCards]
+    [cardStatesMap, schedulerSettings, todayRecord.newLearned, todayReviewedCount, sequentialMode, rescueCards, selectedScope]
   );
 
   const initSessionCardsRef = useRef(initSessionCards);
@@ -449,12 +493,14 @@ export function useFlipCardSession({
     if (
       resumeExtra.autoStart ||
       resumeExtra.deckId ||
-      (resumeExtra.cardIndex !== undefined && resumeExtra.cardIndex > 0)
+      resumeExtra.cardIndex !== undefined ||
+      validMode !== undefined
     ) {
+      const isTabMode = validMode === "due" || validMode === "new" || validMode === "random";
       const nextArtId =
         validMode === "article"
           ? initialArticleIdRef.current || selectedArticleIdRef.current
-          : resumeExtra.deckId
+          : resumeExtra.deckId || isTabMode
             ? undefined
             : activeArticleIdRef.current;
       const nextDeckId =
@@ -465,12 +511,12 @@ export function useFlipCardSession({
       if (nextArtId) {
         setActiveArticleId(nextArtId);
         setSelectedArticleId(nextArtId);
-      } else if (resumeExtra.deckId) {
+      } else if (resumeExtra.deckId || isTabMode) {
         setActiveArticleId(undefined);
       }
       setViewMode("study");
       hasInitializedColdStartRef.current = true;
-      void initSessionCardsRef.current(nextDeckId, nextArtId, restoreIdx);
+      void initSessionCardsRef.current(nextDeckId, nextArtId, restoreIdx, validMode);
       return;
     }
 
@@ -543,11 +589,13 @@ export function useFlipCardSession({
       updatedAt: Date.now(),
       extra: {
         queueMode,
+        deckId: queueMode === "deck" || queueMode === "rescue" ? activeDeckId : undefined,
+        autoStart: true,
         cardIndex: currentIndex,
         totalCards: sessionCards.length,
       },
     });
-  }, [viewMode, currentIndex, queueMode, selectedArticleId, currentFlashcard, sessionCards.length]);
+  }, [viewMode, currentIndex, queueMode, activeDeckId, selectedArticleId, currentFlashcard, sessionCards.length]);
 
   // ── Load State for Current Card ────────────────────────────────────────────
   useEffect(() => {
@@ -568,6 +616,9 @@ export function useFlipCardSession({
     if (existing) {
       setCurrentCardState(existing);
     } else {
+      if (cardChanged) {
+        setCurrentCardState(null);
+      }
       getCardState(currentFlashcard.id).then((state) => {
         if (cancelled) return;
         setCurrentCardState(state || fsrs.createInitialCard(currentFlashcard.id));
@@ -610,7 +661,14 @@ export function useFlipCardSession({
   }, []);
 
   const handleRate = async (rating: Rating) => {
-    if (!currentFlashcard || !currentCardState) return;
+    if (
+      sessionFinished ||
+      !currentFlashcard ||
+      !currentCardState ||
+      currentCardState.cardId !== currentFlashcard.id
+    ) {
+      return;
+    }
 
     if (rating === Rating.AGAIN) {
       sound.playWrong();

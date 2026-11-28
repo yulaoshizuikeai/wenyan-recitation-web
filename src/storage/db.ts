@@ -638,12 +638,33 @@ export async function importAllProgress(
 
   // Version 2 transactional restore across all 5 stores
   const v2 = data as Partial<BackupDataV2>;
+  const isFullV2Restore =
+    Array.isArray(v2.logs) ||
+    isPlainObject(v2.bottlenecks) ||
+    isPlainObject(v2.settings) ||
+    isPlainObject(v2.localPreferences);
+
   const tx = db.transaction(["cards", "daily_records", "logs", "bottlenecks", "settings"], "readwrite");
   const cardStore = tx.objectStore("cards");
   const recordStore = tx.objectStore("daily_records");
   const logStore = tx.objectStore("logs");
   const bottleneckStore = tx.objectStore("bottlenecks");
   const settingStore = tx.objectStore("settings");
+
+  // Full v2 restore replaces existing data cleanly so stale/ghost records do not survive
+  if (isFullV2Restore) {
+    await cardStore.clear();
+    await recordStore.clear();
+    if (Array.isArray(v2.logs)) {
+      await logStore.clear();
+    }
+    if (isPlainObject(v2.bottlenecks)) {
+      await bottleneckStore.clear();
+    }
+    if (isPlainObject(v2.settings)) {
+      await settingStore.clear();
+    }
+  }
 
   let cardsImported = 0;
   for (const card of data.cards) {

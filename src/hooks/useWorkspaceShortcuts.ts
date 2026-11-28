@@ -48,6 +48,8 @@ export interface UseWorkspaceShortcutsOptions {
    * 打开时冻结所有快捷键（除 Esc）。
    */
   isModalOpen?: boolean;
+  /** 是否允许 Cmd/Ctrl + K 切换命令面板（其它弹窗打开时应禁止叠层） */
+  canToggleCommandPalette?: boolean;
 }
 
 /**
@@ -66,11 +68,13 @@ export function useWorkspaceShortcuts({
   onToggleCommandPalette,
   onSwitchView,
   isModalOpen = false,
+  canToggleCommandPalette = true,
 }: UseWorkspaceShortcutsOptions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ── Cmd/Ctrl + K：命令面板（即使在模态框中也允许切换） ──
+      // ── Cmd/Ctrl + K：命令面板（其他模态框打开时不叠加弹出） ──
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey) {
+        if (!canToggleCommandPalette) return;
         e.preventDefault();
         onToggleCommandPalette();
         return;
@@ -103,5 +107,5 @@ export function useWorkspaceShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onToggleShortcuts, onToggleCommandPalette, onSwitchView, isModalOpen]);
+  }, [onToggleShortcuts, onToggleCommandPalette, onSwitchView, isModalOpen, canToggleCommandPalette]);
 }

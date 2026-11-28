@@ -252,11 +252,17 @@ export class FSRSEngine {
             nextStep = 0;
             dueMillis = nowMillis + (this.learningSteps[0] || 60_000);
             break;
-          case Rating.HARD:
+          case Rating.HARD: {
             nextState = CardState.LEARNING;
             nextStep = 0;
-            dueMillis = nowMillis + Math.floor((this.learningSteps[0] || 60_000) * 1.5);
+            const step0 = this.learningSteps[0] || 60_000;
+            const hardDelay =
+              this.learningSteps.length >= 2
+                ? Math.round((step0 + this.learningSteps[1]) / 2)
+                : Math.floor(step0 * 1.5);
+            dueMillis = nowMillis + hardDelay;
             break;
+          }
           case Rating.GOOD:
             if (this.learningSteps.length <= 1) {
               nextState = CardState.REVIEW;

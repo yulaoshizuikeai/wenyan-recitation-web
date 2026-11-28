@@ -73,24 +73,24 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
 
   const moduleOptions = useMemo(() => getGoldenVerseModules(), []);
 
+  const orderedBaseVerses = useMemo(() => {
+    const list = filterGoldenVerses(activeModule, searchQuery);
+    if (!isShuffled) return list;
+    const arr = [...list];
+    let m = arr.length;
+    let seed = shuffledSeed || 42;
+    while (m) {
+      seed = (seed * 9301 + 49297) % 233280;
+      const i = Math.floor((seed / 233280) * m--);
+      [arr[m], arr[i]] = [arr[i], arr[m]];
+    }
+    return arr;
+  }, [activeModule, searchQuery, isShuffled, shuffledSeed]);
+
   const filteredVerses = useMemo(() => {
-    let list = filterGoldenVerses(activeModule, searchQuery);
-    if (onlyWeak) {
-      list = list.filter((v) => ratings[v.id] === "stuck" || ratings[v.id] === "doubt");
-    }
-    if (isShuffled) {
-      const arr = [...list];
-      let m = arr.length;
-      let seed = shuffledSeed || 42;
-      while (m) {
-        seed = (seed * 9301 + 49297) % 233280;
-        const i = Math.floor((seed / 233280) * m--);
-        [arr[m], arr[i]] = [arr[i], arr[m]];
-      }
-      return arr;
-    }
-    return list;
-  }, [activeModule, searchQuery, onlyWeak, isShuffled, shuffledSeed, ratings]);
+    if (!onlyWeak) return orderedBaseVerses;
+    return orderedBaseVerses.filter((v) => ratings[v.id] === "stuck" || ratings[v.id] === "doubt");
+  }, [orderedBaseVerses, onlyWeak, ratings]);
 
   // Keep currentIndex in bounds when list shrinks
   useEffect(() => {
@@ -187,7 +187,7 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
 
   const handleRateAndAdvance = useCallback(
     (verseId: string, rating: CramRating) => {
-      clearAdvanceTimer();
+      if (advanceTimerRef.current !== null) return;
       handleRate(verseId, rating);
 
       if (onlyWeak && rating === "mastered") {
@@ -250,9 +250,9 @@ export const CramModeView: React.FC<CramModeViewProps> = ({
       if (e.code === "Space") { e.preventDefault(); handleFlip(); }
       else if (e.code === "ArrowRight") { e.preventDefault(); handleNext(); }
       else if (e.code === "ArrowLeft") { e.preventDefault(); handlePrev(); }
-      else if (e.key === "1" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "stuck"); }
-      else if (e.key === "2" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "doubt"); }
-      else if (e.key === "3" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "mastered"); }
+      else if (!e.repeat && e.key === "1" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "stuck"); }
+      else if (!e.repeat && e.key === "2" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "doubt"); }
+      else if (!e.repeat && e.key === "3" && currentVerse) { e.preventDefault(); handleRateAndAdvance(currentVerse.id, "mastered"); }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);

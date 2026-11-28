@@ -720,6 +720,32 @@ describe("Phase 3.1 StudyStore & Phase 3.3 Unified Backup v2", () => {
       expect(fakeLocalStorage.getItem("wenyan_last_session")).toBeNull();
     });
 
+    it("clears pre-existing stale cards, records, logs, bottlenecks, and settings during full v2 restore", async () => {
+      await saveCardState(makeCardState("ghost_card"));
+      await recordReviewLog(makeReviewLog("ghost_card", { id: "ghost_log" }));
+      await saveBottlenecks("art_ghost", [0, 1]);
+      await setSetting("ghost_setting", "should_be_removed");
+
+      await importAllProgress({
+        version: 2,
+        exportTime: "2026-11-28T00:00:00.000Z",
+        cards: [makeCardState("fresh_card")],
+        records: [{ date: "2026-11-28", count: 3, newLearned: 1 }],
+        logs: [makeReviewLog("fresh_card", { id: "fresh_log" })],
+        bottlenecks: { art_bx1_12: [2] },
+        settings: { selected_scope: "VOL_BX1" },
+        localPreferences: {}
+      });
+
+      expect((await getAllCardStates()).map((c) => c.cardId)).toEqual(["fresh_card"]);
+      expect((await getDailyRecords()).map((r) => r.date)).toEqual(["2026-11-28"]);
+      expect((await getAllLogs()).map((l) => l.id)).toEqual(["fresh_log"]);
+      expect(await getAllBottlenecks()).toEqual({ art_bx1_12: [2] });
+      const settings = await getAllSettings();
+      expect(settings.ghost_setting).toBeUndefined();
+      expect(settings.selected_scope).toBe("VOL_BX1");
+    });
+
     it("leaves hydrated=false on hydration failure so subsequent hydrate() retries succeed", async () => {
       const store = new StudyStore({ subscribeToDb: false });
       const db = await getDB();

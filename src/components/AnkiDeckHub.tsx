@@ -135,16 +135,11 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
       targetVolId = activeDeckId;
     }
 
-    if (targetVolId) {
-      setExpandedDecks(prev => {
-        if (!prev.has(targetVolId!)) {
-          const next = new Set(prev);
-          next.add(targetVolId!);
-          studyStore.setExpandedDecks(next);
-          return next;
-        }
-        return prev;
-      });
+    if (targetVolId && !expandedDecks.has(targetVolId)) {
+      const next = new Set(expandedDecks);
+      next.add(targetVolId);
+      setExpandedDecks(next);
+      studyStore.setExpandedDecks(next);
     }
   }, [activeArticleId, activeDeckId]);
 
@@ -171,16 +166,14 @@ export const AnkiDeckHub: React.FC<AnkiDeckHubProps> = ({
 
   const toggleDeckExpand = (deckId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setExpandedDecks(prev => {
-      const next = new Set(prev);
-      if (next.has(deckId)) {
-        next.delete(deckId);
-      } else {
-        next.add(deckId);
-      }
-      studyStore.setExpandedDecks(next);
-      return next;
-    });
+    const next = new Set(expandedDecks);
+    if (next.has(deckId)) {
+      next.delete(deckId);
+    } else {
+      next.add(deckId);
+    }
+    setExpandedDecks(next);
+    studyStore.setExpandedDecks(next);
   };
 
   const handleOpenSettings = () => {

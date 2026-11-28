@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Check, RotateCcw, Keyboard } from "lucide-react";
 import { sound } from "../sound/audioSynthesizer";
+import { evaluateScenarioAnswer, DiffChar } from "../domain/scenario/diffEngine";
 
 export function normalizeRecallText(text: string): string {
   return text
@@ -25,37 +26,17 @@ export interface TypingRecallInputProps {
   className?: string;
 }
 
-interface CharFeedback {
-  expected: string;
-  typed: string;
-  status: "correct" | "wrong" | "missing";
-}
-
 function evaluateChars(typedRaw: string, expectedRaw: string): {
   isMatch: boolean;
-  chars: CharFeedback[];
-  extraChars: string;
+  diffs: DiffChar[];
 } {
   const typed = normalizeRecallText(typedRaw);
   const expected = normalizeRecallText(expectedRaw);
-  const chars: CharFeedback[] = [];
-
-  for (let i = 0; i < expected.length; i++) {
-    const exp = expected[i];
-    const got = typed[i] ?? "";
-    if (!got) {
-      chars.push({ expected: exp, typed: "", status: "missing" });
-    } else if (got === exp) {
-      chars.push({ expected: exp, typed: got, status: "correct" });
-    } else {
-      chars.push({ expected: exp, typed: got, status: "wrong" });
-    }
-  }
-
-  const extraChars = typed.length > expected.length ? typed.slice(expected.length) : "";
-  const isMatch = typed.length > 0 && typed === expected;
-
-  return { isMatch, chars, extraChars };
+  const summary = evaluateScenarioAnswer(typed, expected);
+  return {
+    isMatch: typed.length > 0 && summary.isMatch,
+    diffs: summary.diffs
+  };
 }
 
 export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
@@ -187,45 +168,50 @@ export const TypingRecallInput: React.FC<TypingRecallInputProps> = ({
           ) : (
             <div className="space-y-1">
               <div className="text-[11px] font-medium text-red-600 dark:text-red-400">
-                字形核对有误（绿=对，红=错，黄=漏）：
+                字形核对有误（绿=对，红=错，黄=漏，紫=多）：
               </div>
               <div className="flex flex-wrap items-center gap-1 font-classical text-sm">
-                {evaluation.chars.map((c, idx) => {
-                  if (c.status === "correct") {
+                {evaluation.diffs.map((d, idx) => {
+                  if (d.status === "correct") {
                     return (
                       <span
                         key={idx}
                         className="px-1 rounded bg-emerald-100/80 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                       >
-                        {c.expected}
+                        {d.char}
                       </span>
                     );
                   }
-                  if (c.status === "wrong") {
+                  if (d.status === "wrong") {
                     return (
                       <span
                         key={idx}
                         className="inline-flex items-center gap-0.5 px-1 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"
                       >
-                        <span className="line-through opacity-60">{c.typed}</span>
-                        <span className="font-semibold">{c.expected}</span>
+                        <span className="line-through opacity-60">{d.char}</span>
+                        <span className="font-semibold">{d.expected}</span>
+                      </span>
+                    );
+                  }
+                  if (d.status === "missing") {
+                    return (
+                      <span
+                        key={idx}
+                        className="px-1 rounded border border-dashed border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+                      >
+                        {d.expected}
                       </span>
                     );
                   }
                   return (
                     <span
                       key={idx}
-                      className="px-1 rounded border border-dashed border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+                      className="px-1 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 line-through"
                     >
-                      {c.expected}
+                      {d.char}
                     </span>
                   );
                 })}
-                {evaluation.extraChars && (
-                  <span className="px-1 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 line-through">
-                    {evaluation.extraChars}
-                  </span>
-                )}
               </div>
             </div>
           )}

@@ -8,8 +8,14 @@ import { fireConfetti } from "../components/Confetti";
 import { StudyWorkspaceShell } from "../components/StudyWorkspaceShell";
 import { saveLastSession, SessionExtra } from "../storage/sessionTracker";
 import { studyStore } from "../storage/studyStore";
-import { createFsrsEngine } from "../domain/fsrs/fsrsEngine";
-import { Rating } from "../domain/fsrs/fsrsTypes";
+import {
+  createFsrsEngine,
+  DEFAULT_FSRS_SETTINGS,
+  FsrsSettings,
+  getFsrsSettings
+} from "../domain/fsrs/fsrsEngine";
+import { CardState, Rating } from "../domain/fsrs/fsrsTypes";
+import { recordReviewLog } from "../storage/db";
 import { findMatchingFlashcardsForText } from "../domain/fsrs/rescueQueue";
 import { useOptionalStudyApp, useRegisterModalOpen } from "../state/StudyAppContext";
 import {
@@ -136,10 +142,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
     return new Set(findFailedKeyPointIndices(userInput, currentQ.answer, currentQ.keyPoints));
   }, [isEvaluated, diffSummary, userInput, currentQ.answer, currentQ.keyPoints]);
 
-  const scenarioFsrs = useMemo(() => createFsrsEngine(), []);
+  const [fsrsSettings, setFsrsSettings] = useState<FsrsSettings>(DEFAULT_FSRS_SETTINGS);
+  useEffect(() => {
+    let cancelled = false;
+    getFsrsSettings()
+      .then(s => {
+        if (!cancelled) setFsrsSettings(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const scenarioFsrs = useMemo(() => createFsrsEngine(fsrsSettings), [fsrsSettings]);
 
   const handleVerify = useCallback(() => {
-    if (isEvaluated || !currentQ) return;
+    if (isEvaluated || !currentQ || !userInput.trim()) return;
     setIsEvaluated(true);
     setIsAnswerRevealed(true);
 
@@ -158,15 +176,24 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
       const matchedCards = findMatchingFlashcardsForText(currentQ.articleId, currentQ.answer);
       if (matchedCards.length > 0) {
         const snapshotCards = studyStore.getSnapshot().cards;
-        const downgraded = matchedCards.map(card => {
-          const existing = snapshotCards.get(card.id) ?? scenarioFsrs.createInitialCard(card.id);
-          const { updatedCard } = scenarioFsrs.evaluateReview(existing, Rating.AGAIN);
-          return {
+        const downgraded: typeof snapshotCards extends Map<string, infer V> ? V[] : never = [];
+        for (const card of matchedCards) {
+          const existing = snapshotCards.get(card.id);
+          // Only downgrade cards that have already been learned; avoid polluting unlearned NEW cards
+          if (!existing || existing.state === CardState.NEW) continue;
+          const { updatedCard, reviewLog } = scenarioFsrs.evaluateReview(existing, Rating.AGAIN);
+          downgraded.push({
             ...updatedCard,
             lastSource: "scenario" as const
-          };
-        });
-        studyStore.upsertCardsBatch(downgraded);
+          });
+          recordReviewLog(
+            { ...reviewLog, source: "scenario", quotaIsolated: true },
+            { updateDailyRecord: false }
+          ).catch(() => {});
+        }
+        if (downgraded.length > 0) {
+          studyStore.upsertCardsBatch(downgraded);
+        }
       }
     }
 
@@ -487,7 +514,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({ resumeExtra: propRes
                 </button>
                 <button
                   onClick={handleVerify}
-                  className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs font-semibold flex items-center gap-1 transition-all active:scale-[0.98]"
+                  disabled={!userInput.trim()}
+                  className="py-2 px-4 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 text-xs font-semibold flex items-center gap-1 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>提交核对</span>

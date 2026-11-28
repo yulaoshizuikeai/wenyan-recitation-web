@@ -118,6 +118,7 @@ function AppShell() {
     onToggleCommandPalette: toggleCommandPalette,
     onSwitchView: setCurrentView,
     isModalOpen: showShortcuts || showCommandPalette || localModalCount > 0,
+    canToggleCommandPalette: showCommandPalette || (!showShortcuts && localModalCount === 0),
   });
 
   return (
