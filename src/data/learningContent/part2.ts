@@ -158,7 +158,7 @@ export const phonetics2: Record<string, PhoneticsEntry[]> = {
     { word: "觳觫", pinyin: "hú sù", meaning: "恐惧发抖的样子，指牛被牵去宰杀时发抖" },
     { word: "衅钟", pinyin: "xìn zhōng", meaning: "新钟铸成，用牲血涂在钟上祭告" },
     { word: "胡龁", pinyin: "hú hé", meaning: "人名，齐宣王近臣" },
-    { word: "王", pinyin: "wàng", meaning: "破读，作动词用，称王、统治天下", isTongjia: true }
+    { word: "王", pinyin: "wàng", context: ["则王乎", "可以王矣", "保民而王"], meaning: "破读，作动词用，称王、统治天下", isTongjia: true }
   ],
   "art_bx2_03": [
     { word: "庖丁", pinyin: "páo dīng", meaning: "名叫丁的厨师，庖指厨房、厨师" },
@@ -180,7 +180,7 @@ export const phonetics2: Record<string, PhoneticsEntry[]> = {
     { word: "厌", pinyin: "yàn", meaning: "通「餍」，满足", isTongjia: true },
     { word: "说", pinyin: "yuè", meaning: "通「悦」，高兴", isTongjia: true },
     { word: "夫人", pinyin: "fú rén", meaning: "夫读 fú，那个人，指秦穆公", isTongjia: true },
-    { word: "知", pinyin: "zhì", meaning: "通「智」，明智", isTongjia: true }
+    { word: "知", pinyin: "zhì", context: "不知", meaning: "通「智」，明智", isTongjia: true }
   ],
   "art_bx2_05": [
     { word: "飨", pinyin: "xiǎng", meaning: "用酒食款待，这里指犒劳将士" },

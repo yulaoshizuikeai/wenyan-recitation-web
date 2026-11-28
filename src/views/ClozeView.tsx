@@ -2,10 +2,12 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { ALL_ARTICLES, Article } from "../data/curriculumData";
 import { ClozeToken } from "../domain/cloze/clozeEngine";
 import {
-  extractClozeKeywords,
+  extractClozeKeywordSpecs,
   tokenizeArticleParagraphs,
   isTokenEffectiveMasked
 } from "../domain/cloze/keywordExtractor";
+import { studyStore } from "../storage/studyStore";
+import { findMatchingFlashcardsForText } from "../domain/fsrs/rescueQueue";
 import { isArticlePhoneticsLoaded, loadArticlePhonetics } from "../data/articlePhonetics";
 import { sound } from "../sound/audioSynthesizer";
 import { filterArticlesByScope } from "../data/articleTaxonomy";
@@ -15,7 +17,7 @@ import { StudyWorkspaceShell } from "../components/StudyWorkspaceShell";
 import { ArticlePickerModal } from "../components/ArticlePickerModal";
 import { TypingRecallInput } from "../components/TypingRecallInput";
 import { useOptionalStudyApp } from "../state/StudyAppContext";
-import { Eye, EyeOff, Search, X, RotateCcw, Layers, Keyboard } from "lucide-react";
+import { Eye, EyeOff, Search, X, RotateCcw, Layers, Keyboard, CheckCircle2, ShieldAlert } from "lucide-react";
 
 interface ClozeViewProps {
   initialArticleId?: string;
@@ -80,6 +82,8 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
   const [showUnderstanding, setShowUnderstanding] = useState<boolean>(false);
   const [typingRecallEnabled, setTypingRecallEnabled] = useState<boolean>(false);
   const [activeTypingTokenId, setActiveTypingTokenId] = useState<number | null>(null);
+  const [checkedInArticleId, setCheckedInArticleId] = useState<string | null>(null);
+  const [syncedRescueCount, setSyncedRescueCount] = useState<number | null>(null);
 
   const prevArticleIdRef = useRef(selectedArticleId);
   useEffect(() => {
@@ -91,6 +95,8 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
       setShowPhonetics(false);
       setShowUnderstanding(false);
       setShowArticlePicker(false);
+      setCheckedInArticleId(null);
+      setSyncedRescueCount(null);
     }
   }, [selectedArticleId]);
 
@@ -127,7 +133,7 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
   // Extract cloze keywords: 难词注音表中的考点词优先，其次注释词；剔除纯虚词并控制密度
   const clozeKeywords = useMemo(() => {
     void phoneticsRevision;
-    return extractClozeKeywords(currentArticle);
+    return extractClozeKeywordSpecs(currentArticle);
   }, [currentArticle, phoneticsRevision]);
 
   // Tokenize text into paragraphs
@@ -217,6 +223,37 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
       (t) => t.id !== activeTypingToken.id && !next.has(t.id)
     );
     setActiveTypingTokenId(nextUnrevealed ? nextUnrevealed.id : null);
+    if (!nextUnrevealed && checkedInArticleId !== currentArticle.id) {
+      studyStore.recordDailyActivity({ countDelta: 1 });
+      setCheckedInArticleId(currentArticle.id);
+    }
+  };
+
+  const handleClozeCheckIn = () => {
+    studyStore.recordDailyActivity({ countDelta: 1 });
+    setCheckedInArticleId(currentArticle.id);
+    sound.playCorrect();
+  };
+
+  const handleSyncRevealedToRescue = () => {
+    if (revealedTokenIds.size === 0) return;
+    const revealedTexts = maskedTokens
+      .filter((t) => revealedTokenIds.has(t.id))
+      .map((t) => t.originalText);
+    const existing = new Set<number>(studyStore.getSnapshot().bottlenecks.get(currentArticle.id) ?? []);
+    let added = 0;
+    for (const txt of revealedTexts) {
+      const matched = findMatchingFlashcardsForText(currentArticle.id, txt);
+      for (const card of matched) {
+        if (!existing.has(card.unitIndex)) {
+          existing.add(card.unitIndex);
+          added++;
+        }
+      }
+    }
+    studyStore.setBottlenecks(currentArticle.id, Array.from(existing).sort((a, b) => a - b));
+    setSyncedRescueCount(added > 0 ? added : revealedTexts.length);
+    sound.playCorrect();
   };
 
   const handleLevelChange = (lvl: number) => {
@@ -519,6 +556,43 @@ export const ClozeView: React.FC<ClozeViewProps> = ({
             </p>
           ))}
         </div>
+
+        {/* Cloze Closed-Loop Footer: Heatmap Check-in & Rescue Queue Sync */}
+        {level > 0 && (
+          <div className="pt-4 mt-2 border-t border-zinc-100 dark:border-zinc-800/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-zinc-400 dark:text-zinc-500">
+              已刮开 <strong className="text-zinc-700 dark:text-zinc-300">{revealedTokenIds.size}</strong> / {maskedTokens.length} 处空缺
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {revealedTokenIds.size > 0 && !revealAll && (
+                <button
+                  type="button"
+                  onClick={handleSyncRevealedToRescue}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 font-medium transition-colors"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>
+                    {syncedRescueCount !== null
+                      ? `已将卡壳句加入急救包`
+                      : `将刮开的 ${revealedTokenIds.size} 处加入急救包`}
+                  </span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleClozeCheckIn}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                  checkedInArticleId === currentArticle.id
+                    ? "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50"
+                    : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white"
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{checkedInArticleId === currentArticle.id ? "今日已打卡" : "完成本篇打卡"}</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <ArticlePickerModal

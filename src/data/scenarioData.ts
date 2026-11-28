@@ -564,26 +564,27 @@ export const GAOKAO_SCENARIO_QUESTIONS: GaoKaoScenarioQuestion[] = [
     "articleId": "art_xb3_02",
     "articleTitle": "离骚(节选)",
     "author": "屈原",
-    "prompt": "屈原在《离骚》中表明即使遭受严刑粉身碎骨、也绝不改变高洁追求的千古名句是：",
-    "answer": "亦余心之所善兮，虽九死其犹未悔。",
+    "prompt": "屈原在《离骚(节选)》中感叹时光飞逝、春秋交替，表达对草木凋零和美人迟暮之忧的名句是：",
+    "answer": "唯草木之零落兮，恐美人之迟暮。",
     "keyPoints": [
-      "亦余心之所善兮",
-      "虽九死其犹未悔 (‘犹’勿误作‘由’)"
+      "唯 (不要误写为“惟”)",
+      "零落兮",
+      "迟暮"
     ],
-    "explanation": "中华民族矢志报国、百折不挠之崇高精神象征。"
+    "explanation": "《离骚》高频真题，“唯”与教材原文保持一致，注意“兮”字不可遗漏。"
   },
   {
     "id": "gk_lisao_02",
     "articleId": "art_xb3_02",
     "articleTitle": "离骚(节选)",
     "author": "屈原",
-    "prompt": "屈原在《离骚》中表现自己深切关切人民疾苦、哀叹民生艰难的长叹名句是：",
-    "answer": "长太息以掩涕兮，哀民生之多艰。",
+    "prompt": "《离骚(节选)》结尾处，屈原以愿乘骏马驰骋、为君王在前面引路来表达革新政治意愿的句子是：",
+    "answer": "乘骐骥以驰骋兮，来吾道夫先路！",
     "keyPoints": [
-      "长太息以掩涕兮 (‘掩涕’拭泪)",
-      "哀民生之多艰"
+      "骐骥 (骏马，均为马字旁)",
+      "道夫先路 (道通“导”，引导)"
     ],
-    "explanation": "屈原忧国忧民情怀的集中写照。"
+    "explanation": "“道”通“导”是高考通假字核心考点，“骐骥”“驰骋”均为高频易错字。"
   },
   {
     "id": "gk_shuxiang_01",
@@ -644,13 +645,13 @@ export const GAOKAO_SCENARIO_QUESTIONS: GaoKaoScenarioQuestion[] = [
     "articleId": "art_xb1_01",
     "articleTitle": "论语十二章",
     "author": "孔子弟子",
-    "prompt": "孔子在《论语十二章》中阐明学与思辩证关系，强调只学习不思考就会迷惘、只思考不学习就会危险的名言是：",
-    "answer": "学而不思则罔，思而不学则殆。",
+    "prompt": "《论语十二章》中，孔子强调看到贤能之人要向他看齐、看到不贤之人要自我反省的修身名句是：",
+    "answer": "见贤思齐焉，见不贤而内自省也。",
     "keyPoints": [
-      "罔 (‘罔’迷惑迷惘)",
-      "殆 (‘殆’疑惑危险)"
+      "见贤思齐焉 (齐：看齐)",
+      "内自省也 (省xǐng：反省)"
     ],
-    "explanation": "经典求学治学方法论，‘罔’‘殆’字义。"
+    "explanation": "选择性必修上册《论语十二章》高频默写句，注意“焉”“也”虚词不可漏写。"
   },
   {
     "id": "gk_dengtaishan_01",
@@ -664,5 +665,119 @@ export const GAOKAO_SCENARIO_QUESTIONS: GaoKaoScenarioQuestion[] = [
       "明烛天南 (‘烛’名词作动词，照亮)"
     ],
     "explanation": "桐城派‘以字点睛’之代表写景名句。"
+  },
+  {
+    "id": "gk_shengshengman_01",
+    "articleId": "art_bx1_11",
+    "articleTitle": "声声慢·寻寻觅觅",
+    "author": "李清照",
+    "prompt": "李清照《声声慢》中连用七组叠字，由外而内层层递进写出冷清孤寂与内心悲苦的开篇名句是：",
+    "answer": "寻寻觅觅，冷冷清清，凄凄惨惨戚戚。",
+    "keyPoints": [
+      "凄凄惨惨戚戚 (注意“戚”字写法)"
+    ],
+    "explanation": "必修上册必背宋词超高频句，三组叠词顺序不可颠倒。"
+  },
+  {
+    "id": "gk_yumeiren_01",
+    "articleId": "art_bx1_recite_03",
+    "articleTitle": "虞美人·春花秋月何时了",
+    "author": "李煜",
+    "prompt": "李煜《虞美人》中以滚滚东流的春水作比，将抽象愁绪具象化到极致的千古名句是：",
+    "answer": "问君能有几多愁？恰似一江春水向东流。",
+    "keyPoints": [
+      "恰似",
+      "一江春水向东流"
+    ],
+    "explanation": "全词点睛之笔，注意“恰似”不要误写为“好似”。"
+  },
+  {
+    "id": "gk_liuguolun_01",
+    "articleId": "art_bx2_13",
+    "articleTitle": "六国论",
+    "author": "苏洵",
+    "prompt": "苏洵《六国论》开篇即开门见山指出六国灭亡根本原因在于贿赂秦国的句子是：",
+    "answer": "六国破灭，非兵不利，战不善，弊在赂秦。",
+    "keyPoints": [
+      "弊在赂秦 (弊：弊病；赂：贿赂)"
+    ],
+    "explanation": "全篇中心论点，注意“弊”不要误写为“蔽”。"
+  },
+  {
+    "id": "gk_shisishu_01",
+    "articleId": "art_bx2_10",
+    "articleTitle": "谏太宗十思疏",
+    "author": "魏征",
+    "prompt": "魏征《谏太宗十思疏》开篇用树木固根、水流浚源作比，引出治国必须积聚德义的句子是：",
+    "answer": "求木之长者，必固其根本；欲流之远者，必浚其泉源；思国之安者，必积其德义。",
+    "keyPoints": [
+      "浚其泉源 (浚jùn，三点水)",
+      "积其德义"
+    ],
+    "explanation": "“浚”字写法和“长/远/安”的对应关系是高考常见失分点。"
+  },
+  {
+    "id": "gk_dengyueyang_01",
+    "articleId": "art_bx2_recite_01",
+    "articleTitle": "登岳阳楼",
+    "author": "杜甫",
+    "prompt": "杜甫《登岳阳楼》中描绘洞庭湖分断吴楚、日夜浮沉天地的雄浑气象的颔联是：",
+    "answer": "吴楚东南坼，乾坤日夜浮。",
+    "keyPoints": [
+      "坼 (chè，分裂，提土旁)",
+      "乾坤日夜浮"
+    ],
+    "explanation": "“坼”为高考高频易错字，切勿误写为“拆”或“折”。"
+  },
+  {
+    "id": "gk_guizhixiang_01",
+    "articleId": "art_bx2_recite_02",
+    "articleTitle": "桂枝香·金陵怀古",
+    "author": "王安石",
+    "prompt": "王安石《桂枝香·金陵怀古》中以白绢喻江水、以箭簇喻群峰，浓缩金陵秋景的名句是：",
+    "answer": "千里澄江似练，翠峰如簇。",
+    "keyPoints": [
+      "澄江似练 (练：白绢)",
+      "翠峰如簇 (簇：箭簇)"
+    ],
+    "explanation": "注意“似练”与“如簇”两个比喻词不要互换。"
+  },
+  {
+    "id": "gk_chunjiang_01",
+    "articleId": "art_xb1_recite_02",
+    "articleTitle": "春江花月夜",
+    "author": "张若虚",
+    "prompt": "张若虚《春江花月夜》中感慨人类世代相继无穷无尽、江上明月年年相似的哲思名句是：",
+    "answer": "人生代代无穷已，江月年年望相似。",
+    "keyPoints": [
+      "无穷已 (已：停止，非“己”)",
+      "望相似 (不要误写为“只相似”)"
+    ],
+    "explanation": "“已”与“望”是本句最容易写错的两个采分点。"
+  },
+  {
+    "id": "gk_guoqinlun_01",
+    "articleId": "art_xb2_03",
+    "articleTitle": "过秦论(上篇)",
+    "author": "贾谊",
+    "prompt": "贾谊《过秦论》结尾点明强秦迅速覆灭根本原因的主旨句是：",
+    "answer": "仁义不施而攻守之势异也。",
+    "keyPoints": [
+      "攻守之势异也"
+    ],
+    "explanation": "全篇核心结论，注意“势”字与句末“也”字。"
+  },
+  {
+    "id": "gk_lingguan_01",
+    "articleId": "art_xb2_04",
+    "articleTitle": "五代史伶官传序",
+    "author": "欧阳修",
+    "prompt": "欧阳修《五代史伶官传序》末尾警示世人祸患常积于微末、智勇之人往往困于所沉溺之物的名句是：",
+    "answer": "夫祸患常积于忽微，而智勇多困于所溺，岂独伶人也哉！",
+    "keyPoints": [
+      "积于忽微",
+      "困于所溺 (溺：沉溺)"
+    ],
+    "explanation": "常考前两句或整句，注意“夫”“而”“也哉”等虚词。"
   }
 ];

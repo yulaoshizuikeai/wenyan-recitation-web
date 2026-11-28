@@ -321,7 +321,7 @@ export const phonetics1: Record<string, PhoneticsEntry[]> = {
     { word: "踟蹰", pinyin: "chí chú", meaning: "徘徊不进的样子" },
     { word: "彤管", pinyin: "tóng guǎn", meaning: "红色的管状物，一说红管笔" },
     { word: "说怿", pinyin: "yuè yì", meaning: "喜爱，“说”通“悦”", isTongjia: true },
-    { word: "女", pinyin: "rǔ", meaning: "通“汝”，你", isTongjia: true },
+    { word: "女", pinyin: "rǔ", context: ["说怿女美", "匪女之为美"], meaning: "通“汝”，你", isTongjia: true },
     { word: "洵", pinyin: "xún", meaning: "实在、确实" },
     { word: "匪", pinyin: "fěi", meaning: "通“非”，不是", isTongjia: true }
   ],

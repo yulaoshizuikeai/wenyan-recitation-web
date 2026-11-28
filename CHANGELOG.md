@@ -8,6 +8,23 @@
 
 ## [未发布]
 
+### 新增
+
+- **闪卡一键撤回评分（快捷键 `Z`）与背面词句注释**：在 `useFlipCardSession.ts`、`FlipCardView.tsx` 与 `FlipCardBody.tsx` 中新增会话内撤回栈（`canUndo` / `handleUndo`），支持按键 `Z` 或点击「撤回」恢复上一张卡片的 FSRS 状态与当日计数，避免手滑按错 `1/2/3/4` 污染记忆曲线；同时在 `flashcardGenerator.ts` 中自动匹配 `article.annotations` 填充 `backNotes` 并在闪卡背面展示。
+- **刻漏字（`ClozeView`）与抱佛脚（`CramModeView`）学习闭环联动**：`ClozeView.tsx` 底部新增「完成本篇打卡」与「将刮开的 N 处加入急救包」操作（手打盲默全部过关时自动打卡），把刻漏字练习计入每日热力图并将卡壳句同步至高频急救队列；`CramModeView.tsx` 每次评分同步调用 `studyStore.recordDailyActivity` 计入每日学习热力图。
+- **补齐 10 篇高考高频必背篇目的情境默写真题与自动化数据门禁**：在 `scenarioData.ts` 中新增《声声慢》《虞美人》《六国论》《谏太宗十思疏》《登岳阳楼》《桂枝香·金陵怀古》《春江花月夜》《过秦论》《五代史伶官传序》《锦瑟》10 道真题；在 `tests/dataIntegrity.test.ts` 中新增门禁，强制校验所有真题答案与金句都能精确命中教材正文、双句闪卡主卡唯一且为顺背、无说话人无效挖空及同篇无重复题干。
+
+### 变更
+
+- **重写刻漏字 L2 挖空与 L1 语境限定匹配**：重写 `src/domain/cloze/clozeEngine.ts` 的 `tokenizeHalfClause`，由原来按字数中点腰斩单个词组改为真正的「出句明文提示、对句整句遮挡」（无逗号的独立连续短句按句交替遮挡）；在 `learningContentTypes.ts`、`keywordExtractor.ts` 与 `part1~3.ts` 中为单字通假/破读字（如《静女》「女」、《齐桓晋文之事》「王」、《烛之武退秦师》「知」、《五石之瓠》「瓠」、《兼爱》「贼」）新增可选 `context` 语境限定，避免 L1 全局子串匹配误伤普通字义。
+- **优化闪卡分句质量**：在 `src/data/flashcardGenerator.ts`（并同步 `scripts/generate-curriculum-index.mjs`）中，过滤 `子曰：`、`君子曰：`、`客曰：`、`苏子曰：` 等纯说话人引语不再作为挖空答案；为 83 张无逗号的独立单句闪卡自动在正面附上上一句语境，消除零语境盲猜；为《芣苢》《无衣》等同篇重复题干自动追加章次与承接提示完成消歧。
+
+### 修复
+
+- **修复双句闪卡默认优先排「倒背」的 `isPrimary` 缺陷**：`flashcardGenerator.ts` 原先将两句对联的正反两张卡同时标为 `isPrimary: true`，导致 `ankiScheduler.burySiblingCards` 首日总是选中索引 0 的「对句测出句（倒背）」。现修正为双句对联仅 `UPPER_PROMPT_LOWER`（出句测对句）为 `isPrimary: true`，确保新学首日顺背、次日再练倒背。
+- **修复日内学习步长无法在单次会话毕业与切页绕过兄弟卡避让的问题**：`useFlipCardSession.ts` 现在会将评分后仍处于 `LEARNING` / `RELEARNING` 状态的卡片在会话内自动重排回队列，使新卡可在单次学习内顺利毕业为 `REVIEW`；切换「待复习 / 新卡 / 选篇 / 随机」标签时统一应用 `burySiblingCards`；当选册今日排程清零时不再静默回退塞入前 20 张旧卡，而是展示明确的完成状态。
+- **修复语料与真题/金句不一致及《登岳阳楼》重复收录问题**：替换 `scenarioData.ts` 中混入的初中《论语》真题（`gk_lunyu_02`）并对齐《离骚(节选)》真题与正文；修正 `goldenVersesData.ts` 中 8 处与当前正文不一致的异文/节选条目（如《桂枝香》「归帆去棹」、《陈情表》「五尺之僮」等）；在 `ankiDecks.ts` 中对 `DECK_GAOKAO72` 与 `DECK_ALL` 按篇名+作者去重，避免重复收录的《登岳阳楼》产生双份卡片。
+
 ## [1.1.0] - 2026-11-26
 
 ### 新增

@@ -29,11 +29,52 @@ export interface Flashcard {
 
 export function matchPhoneticsForText(phonetics: PhoneticsEntry[], text: string): PhoneticsEntry[] {
   if (phonetics.length === 0 || !text) return [];
-  return phonetics.filter(entry => entry.word && text.includes(entry.word));
+  return phonetics.filter(entry => {
+    if (!entry.word || !text.includes(entry.word)) return false;
+    if (entry.context) {
+      const ctxList = Array.isArray(entry.context) ? entry.context : [entry.context];
+      const validCtx = ctxList.filter(c => c.length > 0);
+      if (validCtx.length > 0 && !validCtx.some(c => text.includes(c))) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+/**
+ * Match article annotations whose headword appears in the target verse/clause.
+ */
+export function matchAnnotationsForText(
+  annotations: readonly string[] | undefined,
+  text: string,
+  limit = 3
+): string | null {
+  if (!annotations || annotations.length === 0 || !text) return null;
+  const matched: string[] = [];
+  for (const ann of annotations) {
+    const headword = ann.split(/[：（(]/)[0].trim();
+    if (headword.length >= 2 && text.includes(headword)) {
+      matched.push(ann);
+      if (matched.length >= limit) break;
+    }
+  }
+  return matched.length > 0 ? matched.join("\n") : null;
 }
 
 const END_PUNCTS = new Set(["。", "！", "？", "；"]);
 const SENTENCE_REGEX = /[^。！？；\n]+[。！？；]?[”’"']?/g;
+
+/**
+ * Speaker-introductory tags followed by a colon (e.g. "子曰：", "君子曰：", "客曰：",
+ * "苏子曰：", "对曰：", "夫子喟然叹曰：", "齐宣王问曰：", "凭谁问：").
+ * These should remain visible as prompt context rather than becoming the blanked answer.
+ */
+const SPEAKER_INTRO_RE = /^[^，。！？；：]{1,7}(?:曰|云|问|叹曰|歌曰|对曰)$/;
+
+function isSpeakerIntroClause(clause: ClausePiece): boolean {
+  return clause.sepAfter === "：" && SPEAKER_INTRO_RE.test(clause.text);
+}
 
 interface ClausePiece {
   text: string;
@@ -138,17 +179,25 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
       if (clauses.length === 1) {
         const clause = clauses[0].text;
         const matchedPhonetics = matchPhoneticsForText(articlePhonetics, clause);
+        const matchedNotes = matchAnnotationsForText(article.annotations, clause);
+        // Provide preceding sentence directly on the front so standalone sentences are never zero-context blind guesses
+        const promptText = prevVerseContext
+          ? `${prevVerseContext}\n⟦ ________ ⟧${endPunct}`
+          : `【开篇默写】⟦ ________ ⟧${endPunct}`;
+
         list.push({
           id: `fc_${article.id}_u${unitIndex}_c0`,
           segmentId: `seg_${article.id}_${unitIndex}`,
           articleId: article.id,
           cardType: "FULL_SENTENCE_RECALL",
           frontTitle: `《${article.title}》· ${article.author}`,
-          frontPrompt: `【填空默写】⟦ ________ ⟧${endPunct}`,
-          frontHint: `朝代：${article.dynasty} · 体裁：${article.genre}`,
+          frontPrompt: promptText,
+          frontHint: prevVerseContext
+            ? `朝代：${article.dynasty} · 【承上启下 · 续背下句】`
+            : `朝代：${article.dynasty} · 体裁：${article.genre}`,
           backAnswer: `【填空正解】${clause}`,
           backTranslation: resolvedTranslation,
-          backNotes: null,
+          backNotes: matchedNotes,
           isPrimary: true,
           clozeIndex: 1,
           totalClozes: 1,
@@ -187,17 +236,24 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
           if (chunk.length === 1) {
             const singleClause = chunk[0].text;
             const matchedPhonetics = matchPhoneticsForText(articlePhonetics, singleClause);
+            const matchedNotes = matchAnnotationsForText(article.annotations, singleClause);
+            const promptText = prevVerseContext
+              ? `${prevVerseContext}\n⟦ ________ ⟧${chunkEndPunct}`
+              : `【开篇默写】⟦ ________ ⟧${chunkEndPunct}`;
+
             list.push({
               id: `fc_${article.id}_u${unitIndex}_c0`,
               segmentId: `seg_${article.id}_${unitIndex}`,
               articleId: article.id,
               cardType: "FULL_SENTENCE_RECALL",
               frontTitle: `《${article.title}》· ${article.author}`,
-              frontPrompt: `【填空默写】⟦ ________ ⟧${chunkEndPunct}`,
-              frontHint: `朝代：${article.dynasty} · 体裁：${article.genre}`,
+              frontPrompt: promptText,
+              frontHint: prevVerseContext
+                ? `朝代：${article.dynasty} · 【承上启下 · 续背下句】`
+                : `朝代：${article.dynasty} · 体裁：${article.genre}`,
               backAnswer: `【填空正解】${singleClause}`,
               backTranslation: resolvedTranslation,
-              backNotes: null,
+              backNotes: matchedNotes,
               isPrimary: true,
               clozeIndex: 1,
               totalClozes: 1,
@@ -221,8 +277,30 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
             chunkText += j < chunk.length - 1 ? (chunk[j].sepAfter || "，") : chunkEndPunct;
           }
           const matchedPhonetics = matchPhoneticsForText(articlePhonetics, chunkText);
-          const totalVariants = chunk.length;
+          const matchedNotes = matchAnnotationsForText(article.annotations, chunkText);
+
+          // Determine which clause indices are valid cloze targets (never blank pure speaker tags like "子曰：")
+          const targetIndices: number[] = [];
           for (let k = 0; k < chunk.length; k++) {
+            if (!isSpeakerIntroClause(chunk[k])) {
+              targetIndices.push(k);
+            }
+          }
+          // Fallback if every clause looked like a speaker tag (extremely rare)
+          if (targetIndices.length === 0) {
+            targetIndices.push(chunk.length - 1);
+          }
+
+          const totalVariants = targetIndices.length;
+          // For standard 2-clause couplets, prioritize forward recall (k === 1, UPPER_PROMPT_LOWER)
+          // as the sole primary card so sibling burying schedules forward recall on Day 1.
+          const primaryTargetIdx =
+            chunk.length === 2 && targetIndices.includes(1)
+              ? 1
+              : targetIndices[0];
+
+          for (let vIdx = 0; vIdx < targetIndices.length; vIdx++) {
+            const k = targetIndices[vIdx];
             const targetClause = chunk[k].text;
             let promptStr = "";
             let contextStr = "";
@@ -251,9 +329,11 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
               cardType = (k === 1) ? "UPPER_PROMPT_LOWER" : "LOWER_PROMPT_UPPER";
             }
 
-            let positionLabel = `第 ${k + 1}/${totalVariants} 空`;
-            if (chunk.length === 2) {
+            let positionLabel = `第 ${vIdx + 1}/${totalVariants} 空`;
+            if (chunk.length === 2 && totalVariants === 2) {
               positionLabel = (k === 1) ? "出句测对句" : "对句测出句";
+            } else if (chunk.length === 2 && totalVariants === 1 && k === 1) {
+              positionLabel = "引语测正文";
             }
 
             list.push({
@@ -266,9 +346,9 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
               frontHint: `朝代：${article.dynasty} · 【${positionLabel} · 语境填空】`,
               backAnswer: `【填空正解】${targetClause}`,
               backTranslation: resolvedTranslation,
-              backNotes: null,
-              isPrimary: (k === 0 || (chunk.length === 2 && k === 1)),
-              clozeIndex: k + 1,
+              backNotes: matchedNotes,
+              isPrimary: k === primaryTargetIdx,
+              clozeIndex: vIdx + 1,
               totalClozes: totalVariants,
               fullVerseContext: contextStr,
               maskedSegment: targetClause,
@@ -300,7 +380,7 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
       frontHint: null,
       backAnswer: fallbackText,
       backTranslation: paragraphGist ?? article.translation,
-      backNotes: null,
+      backNotes: matchAnnotationsForText(article.annotations, fallbackText),
       isPrimary: true,
       clozeIndex: 1,
       totalClozes: 1,
@@ -312,6 +392,24 @@ export function generateFlashcardsForArticle(article: Article): Flashcard[] {
       paragraphIndex: 0,
       paragraphGist,
       backPhonetics: matchPhoneticsForText(articlePhonetics, fallbackText)
+    });
+  }
+
+  // Disambiguate identical frontPrompts within the same article (e.g., 《芣苢》/《无衣》 refrain chapters)
+  const promptBuckets = new Map<string, Flashcard[]>();
+  for (const card of list) {
+    const bucket = promptBuckets.get(card.frontPrompt);
+    if (bucket) bucket.push(card);
+    else promptBuckets.set(card.frontPrompt, [card]);
+  }
+  for (const bucket of promptBuckets.values()) {
+    if (bucket.length <= 1) continue;
+    bucket.forEach((card, dupIdx) => {
+      const paraNo = (card.paragraphIndex ?? 0) + 1;
+      const cue = card.precedingClauseHint
+        ? `（第 ${paraNo} 章 · 承「${card.precedingClauseHint}」）`
+        : `（第 ${paraNo} 章 · 第 ${dupIdx + 1} 处）`;
+      card.frontPrompt = `${card.frontPrompt}\n${cue}`;
     });
   }
 

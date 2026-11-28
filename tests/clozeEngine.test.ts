@@ -75,21 +75,39 @@ describe("ClozeEngine", () => {
   });
 
   describe("Level 2: Half-Clause Masking (半句遮挡)", () => {
-    it("splits clauses at punctuation and masks the second half of clauses length >= 2", () => {
+    it("shows the upper clause (出句) and masks the lower clause (对句) without chopping words in half", () => {
       const text = "白日依山尽，黄河入海流。";
       const tokens = ClozeEngine.tokenize(text, 2, []);
 
       expect(reconstructText(tokens)).toBe(text);
+      expect(tokens).toEqual([
+        { id: 1, originalText: "白日依山尽", isMasked: false },
+        { id: 2, originalText: "，", isMasked: false },
+        { id: 3, originalText: "黄河入海流", isMasked: true },
+        { id: 4, originalText: "。", isMasked: false }
+      ]);
+    });
 
-      // "白日依山尽" has length 5: first half (Math.floor(5/2) = 2) is "白日" (unmasked), second half "依山尽" (masked)
-      expect(tokens[0]).toEqual({ id: 1, originalText: "白日", isMasked: false });
-      expect(tokens[1]).toEqual({ id: 2, originalText: "依山尽", isMasked: true });
-      expect(tokens[2]).toEqual({ id: 3, originalText: "，", isMasked: false });
+    it("alternates masking across consecutive standalone sentences without commas", () => {
+      const text = "何以解忧？唯有杜康。";
+      const tokens = ClozeEngine.tokenize(text, 2, []);
 
-      // "黄河入海流" has length 5: "黄河" (unmasked), "入海流" (masked)
-      expect(tokens[3]).toEqual({ id: 4, originalText: "黄河", isMasked: false });
-      expect(tokens[4]).toEqual({ id: 5, originalText: "入海流", isMasked: true });
-      expect(tokens[5]).toEqual({ id: 6, originalText: "。", isMasked: false });
+      expect(reconstructText(tokens)).toBe(text);
+      expect(tokens.filter(t => t.isMasked).map(t => t.originalText)).toEqual(["唯有杜康"]);
+    });
+
+    it("supports context-scoped L1 keywords so 1-char loanwords do not over-mask unrelated occurrences", () => {
+      const text = "静女其姝，俟我于城隅。彤管有炜，说怿女美。匪女之为美，美人之贻。";
+      const tokens = ClozeEngine.tokenize(text, 1, [
+        { word: "女", context: ["说怿女美", "匪女之为美"] }
+      ]);
+
+      expect(reconstructText(tokens)).toBe(text);
+      const masked = tokens.filter(t => t.isMasked).map(t => t.originalText);
+      expect(masked).toEqual(["女", "女"]);
+      // "静女其姝" must remain unmasked
+      expect(tokens[0].originalText).toContain("静女其姝");
+      expect(tokens[0].isMasked).toBe(false);
     });
 
     it("leaves 1-character clauses unmasked", () => {

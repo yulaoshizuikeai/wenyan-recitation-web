@@ -10,6 +10,12 @@ export interface PhoneticsEntry {
   meaning: string;
   /** 是否为通假字/破读字 */
   isTongjia?: boolean;
+  /**
+   * 可选语境限定（单个或多个包含 word 的短语），
+   * 用于 L1 关键词挖空时避免单字通假/破读字误伤全文普通字义。
+   * 例如 "女"（通"汝"）仅匹配 "说怿女美" / "匪女之为美"，不误挖 "静女"。
+   */
+  context?: string | string[];
 }
 
 /** 文章理解内容 */

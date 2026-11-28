@@ -52,7 +52,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
     hasRestoredNotice, setHasRestoredNotice, remainingInSession, newCardsAll,
     dueCardsAll, rescueCards, cardStatesMap, dailyPlan, targetArticles, sequentialMode,
     toggleSequentialMode, showPrecedingHint, togglePrecedingHint, typingMode,
-    toggleTypingMode, handleFlip, handleRate, handleSwitchMode, handleSelectArticle,
+    toggleTypingMode, canUndo, handleFlip, handleRate, handleUndo, handleSwitchMode, handleSelectArticle,
     handleResetIndex, handleStartStudyDeck, handleUpdateSettings, refreshCardStates,
   } = useFlipCardSession({ initialArticleId, selectedScope, resumeExtra });
 
@@ -87,6 +87,9 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
       if (e.code === "Space" || ((e.code === "Enter" || e.code === "NumpadEnter") && !isFlipped)) {
         e.preventDefault();
         handleFlip();
+      } else if ((e.key === "z" || e.key === "Z") && canUndo) {
+        e.preventDefault();
+        handleUndo();
       } else if (!isFlipped && (e.key === "h" || e.key === "H")) {
         e.preventDefault();
         togglePrecedingHint();
@@ -111,8 +114,10 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
     isFlipped,
     currentFlashcard,
     currentCardState,
+    canUndo,
     handleFlip,
     handleRate,
+    handleUndo,
     togglePrecedingHint,
   ]);
 
@@ -226,6 +231,7 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
         { keys: "Space", label: "翻开卡片" },
         { keys: "H", label: "提示上一句" },
         { keys: "1 / 2 / 3 / 4", label: "重来 / 困难 / 良好 / 简单" },
+        { keys: "Z", label: "撤回上一张评分" },
       ]}
       sidebarHint="凭第一反应评分，不要凭「刚才看过」的感觉。评低一点，明天才会真的再见到它。"
       showPhonetics={showPhonetics}
@@ -367,6 +373,8 @@ export const FlipCardView: React.FC<FlipCardViewProps> = ({
                   hasRestoredNotice={hasRestoredNotice}
                   onFlip={handleFlip}
                   onRate={handleRate}
+                  canUndo={canUndo}
+                  onUndo={handleUndo}
                   onResetIndex={handleResetIndex}
                   onDismissRestoredNotice={() => setHasRestoredNotice(false)}
                   showPrecedingHint={showPrecedingHint}

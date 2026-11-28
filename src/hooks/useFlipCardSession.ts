@@ -31,6 +31,7 @@ import {
   SchedulerSettings,
   DEFAULT_SCHEDULER_SETTINGS,
   DailySchedulePlan,
+  burySiblingCards,
   shuffleArray,
 } from "../domain/fsrs/ankiScheduler";
 import { buildRescueFlashcardQueue } from "../domain/fsrs/rescueQueue";
@@ -110,9 +111,12 @@ export interface FlipCardSessionState {
   togglePrecedingHint: () => void;
   typingMode: boolean;
   toggleTypingMode: () => void;
+  // Undo
+  canUndo: boolean;
   // Handlers
   handleFlip: () => void;
   handleRate: (rating: Rating) => Promise<void>;
+  handleUndo: () => void;
   handleSwitchMode: (mode: QueueMode) => void;
   handleSelectArticle: (articleId: string) => void;
   handleResetIndex: () => void;
@@ -358,10 +362,6 @@ export function useFlipCardSession({
       );
 
       let queue = ankiScheduler.createSessionQueue(plan);
-      if (queue.length === 0) {
-        const deckCards = flashcardCache.getCardsForArticles(targetArtList);
-        queue = deckCards.slice(0, 20);
-      }
 
       if (sequentialMode) {
         queue = sortCardsSequentially(queue);
@@ -379,6 +379,7 @@ export function useFlipCardSession({
       setShowPrecedingHint(false);
       setCompletedCount(0);
       setSessionFinished(false);
+      setUndoStack([]);
     },
     [cardStatesMap, schedulerSettings, todayRecord, sequentialMode, rescueCards]
   );
@@ -591,6 +592,17 @@ export function useFlipCardSession({
     return fsrs.previewIntervals(currentCardState);
   }, [currentCardState, fsrs]);
 
+  interface UndoEntry {
+    cardId: string;
+    previousState: CardFsrsState;
+    previousIndex: number;
+    previousQueue: Flashcard[];
+    previousCompletedCount: number;
+    wasNewCard: boolean;
+  }
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const canUndo = undoStack.length > 0;
+
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleFlip = useCallback(() => {
     sound.playFlip();
@@ -606,23 +618,45 @@ export function useFlipCardSession({
       sound.playCorrect();
     }
 
+    const previousStateSnapshot: CardFsrsState = { ...currentCardState };
     const result = fsrs.evaluateReview(currentCardState, rating);
+    const wasNewCard = result.reviewLog.previousState === CardState.NEW;
+
+    setUndoStack((prev) => [
+      ...prev.slice(-19),
+      {
+        cardId: currentFlashcard.id,
+        previousState: previousStateSnapshot,
+        previousIndex: currentIndex,
+        previousQueue: sessionCards,
+        previousCompletedCount: completedCount,
+        wasNewCard,
+      },
+    ]);
 
     // Optimistic 0ms update in StudyStore + background IndexedDB persistence
     studyStore.upsertCard(result.updatedCard);
     studyStore.recordDailyActivity({
       countDelta: 1,
-      newLearnedDelta: result.reviewLog.previousState === CardState.NEW ? 1 : 0,
+      newLearnedDelta: wasNewCard ? 1 : 0,
     });
     recordReviewLog(result.reviewLog, { updateDailyRecord: false }).catch(() => {});
 
     setCompletedCount((prev) => prev + 1);
 
-    const willRequeue = rating === Rating.AGAIN && schedulerSettings.enableSessionLoop;
+    // Requeue cards that remain in intraday LEARNING / RELEARNING steps (not only AGAIN)
+    // so new/relearning cards can graduate cleanly to REVIEW within a single session.
+    const staysInIntradayStep =
+      result.updatedCard.state === CardState.LEARNING ||
+      result.updatedCard.state === CardState.RELEARNING;
+    const willRequeue =
+      schedulerSettings.enableSessionLoop &&
+      (rating === Rating.AGAIN || staysInIntradayStep);
 
     if (willRequeue) {
+      const offset = rating === Rating.AGAIN ? 4 : rating === Rating.HARD ? 5 : 6;
       setSessionCards((prevQueue) =>
-        ankiScheduler.requeueFailedCard(prevQueue, currentIndex, currentFlashcard, 4)
+        ankiScheduler.requeueFailedCard(prevQueue, currentIndex, currentFlashcard, offset)
       );
     }
 
@@ -637,6 +671,26 @@ export function useFlipCardSession({
       setShowPrecedingHint(false);
     }
   };
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      studyStore.upsertCard(last.previousState);
+      studyStore.recordDailyActivity({
+        countDelta: -1,
+        newLearnedDelta: last.wasNewCard ? -1 : 0,
+      });
+      setSessionCards(last.previousQueue);
+      setCurrentIndex(last.previousIndex);
+      setCompletedCount(last.previousCompletedCount);
+      setSessionFinished(false);
+      setIsFlipped(true);
+      setShowPrecedingHint(false);
+      sound.playFlip();
+      return prev.slice(0, -1);
+    });
+  }, []);
 
   const toggleSequentialMode = useCallback(() => {
     const next = !sequentialModeRef.current;
@@ -669,18 +723,23 @@ export function useFlipCardSession({
     setSessionFinished(false);
     setHasRestoredNotice(false);
 
+    const shouldBury = schedulerSettings.burySiblings !== false;
     let nextQueue: Flashcard[] = [];
     if (mode === "due") {
-      nextQueue = dueCardsAll.slice(0, 30);
+      const pool = shouldBury ? burySiblingCards(dueCardsAll).selected : dueCardsAll;
+      nextQueue = pool.slice(0, 30);
     } else if (mode === "new") {
-      nextQueue = newCardsAll.slice(0, schedulerSettings.dailyNewLimit || 20);
+      const pool = shouldBury ? burySiblingCards(newCardsAll).selected : newCardsAll;
+      nextQueue = pool.slice(0, schedulerSettings.dailyNewLimit || 20);
     } else if (mode === "article") {
       const art = await loadArticleById(selectedArticleId);
       if (queueRequestIdRef.current !== reqId) return;
-      nextQueue = art ? flashcardCache.getCardsForArticle(art) : [];
+      const raw = art ? flashcardCache.getCardsForArticle(art) : [];
+      nextQueue = shouldBury ? burySiblingCards(raw).selected : raw;
     } else if (mode === "random") {
       const shuffled = shuffleArray(allCards);
-      nextQueue = shuffled.slice(0, 25);
+      const pool = shouldBury ? burySiblingCards(shuffled).selected : shuffled;
+      nextQueue = pool.slice(0, 25);
     } else if (mode === "rescue") {
       nextQueue = [...rescueCards];
     }
@@ -693,7 +752,11 @@ export function useFlipCardSession({
     setSelectedArticleId(articleId);
     const art = await loadArticleById(articleId);
     if (queueRequestIdRef.current !== reqId) return;
-    const nextQueue = art ? flashcardCache.getCardsForArticle(art) : [];
+    const rawQueue = art ? flashcardCache.getCardsForArticle(art) : [];
+    const nextQueue =
+      schedulerSettings.burySiblings !== false
+        ? burySiblingCards(rawQueue).selected
+        : rawQueue;
     setSessionCards(sequentialModeRef.current ? sortCardsSequentially(nextQueue) : nextQueue);
     setCurrentIndex(0);
     setIsFlipped(false);
@@ -745,8 +808,10 @@ export function useFlipCardSession({
     togglePrecedingHint,
     typingMode,
     toggleTypingMode,
+    canUndo,
     handleFlip,
     handleRate,
+    handleUndo,
     handleSwitchMode,
     handleSelectArticle,
     handleResetIndex,
